@@ -444,9 +444,15 @@
     var records = Object.keys(state.results).map(function (k) {
       return { key: k, palette: state.results[k].palette };
     });
-    state.order = Similarity.orderByPalette(records, {
+    // Cluster first, then walk a path inside each block. A single path over
+    // the whole set is smooth between neighbours but has no global structure:
+    // it consumes the dense regions first and its tail wanders, scattering
+    // blues through the reds. Clustering keeps each colour region contiguous.
+    var groups = { coarse: 8, medium: 14, fine: 24 }[state.settings.grouping] || 14;
+
+    state.order = Similarity.orderByClusters(records, {
       maxColours: state.settings.colorCount,
-      window: 40
+      groups: groups
     });
     if (state.reverse) state.order = state.order.slice().reverse();
   }

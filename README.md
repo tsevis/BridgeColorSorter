@@ -126,27 +126,38 @@ because one carries gold and cream while the other carries blue and white. No
 tuning of the criteria fixes that — the information was discarded before the
 sort began.
 
-**Order by → Whole-palette similarity** keeps all of it. Each image retains its
-full clustered palette with weights; a perceptual distance is defined between
-two palettes (for each colour in A, its nearest counterpart in B, weighted by
-how much of the frame it occupies — the standard cheap approximation of
-earth-mover's distance); and the images are arranged into a path where each sits
-next to the one it most resembles. Greedy nearest-neighbour, then a windowed
-2-opt pass to undo local crossings.
+**Order by → Whole-palette similarity** keeps all of it, and arranges the
+library the way the colour literature prescribes: **group by hue, then ramp by
+lightness inside each group** (the HCL pattern). There is no perfect way to
+flatten three perceptual dimensions onto one, so one has to be sacrificed
+deliberately — here it is chroma, the least visible of the three.
 
-Measured on a real 1,559-image folder, mean perceptual gap between neighbours:
+1. Each image is reduced to a **lightness-free** colour identity: every palette
+   entry becomes a direction on the hue wheel scaled by how colourful it is,
+   plus a neutral axis.
+2. Those identities are clustered (k-medoids) into blocks.
+3. Blocks are ordered **around the hue wheel**, neutrals last.
+4. Inside each block, images run in a strict **lightness ramp**, and the ramp is
+   flipped when that puts its matching end against the previous block.
 
-| | mean gap | worst |
-|---|---|---|
-| Criteria sort (hue → lightness) | 0.0679 | 0.230 |
-| **Whole-palette similarity** | **0.0358** | 0.102 |
+Three failures had to be fixed to get there, each visible in the grid before it
+was understood:
 
-**1.9× smoother**, worst case 2.3× better, computed in about half a second.
+| Symptom | Cause |
+|---|---|
+| Dark reds sitting among dark yellows | The clustering distance included lightness. OKLab compresses `a`/`b` as lightness falls, so two *dark* colours of different hue read as close — and being both dark merged them. |
+| Lightness jumping about inside a colour group | A similarity path was ordering each block. It optimises colour closeness, which does not move in step with lightness. |
+| Blues appearing at both ends of the library | Blocks were chained by a nearest-neighbour path, which is locally sensible but globally wrong. The hue wheel fixes it by construction. |
 
-The result is a *sequence*, not a sort — it cannot be expressed as "X then Y" —
-which is why renaming is the only route that can carry it into Bridge. Names
-become `P0042-H028-L059_photo.jpg`: position drives the order, hue and lightness
-ride along as information.
+Names become `P0042-H028-L059_photo.jpg`: position drives the order, hue and
+lightness ride along as information.
+
+> **A note on measuring this.** Three separate numeric metrics — mean neighbour
+> gap, colour-region changes, and a lightness-reversal count — each looked
+> authoritative and each pointed the wrong way. Greedy path ordering *wins* on
+> mean neighbour gap by construction while still reading as scattered. Rendering
+> the whole library as a contact sheet settled every question in seconds. Judge
+> this feature by eye, not by a number.
 
 ### Numbering files
 
