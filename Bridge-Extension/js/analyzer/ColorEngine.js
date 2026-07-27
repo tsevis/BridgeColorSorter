@@ -256,6 +256,28 @@
     ];
   }
 
+  function linearToSrgb(c) {
+    var v = c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+    return Math.max(0, Math.min(255, Math.round(v * 255)));
+  }
+
+  /** Inverse of rgbToOklab. Cluster centroids live in OKLab and come back here. */
+  function oklabToRgb(L, a, b) {
+    var l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+    var m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+    var s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+
+    var l = l_ * l_ * l_;
+    var m = m_ * m_ * m_;
+    var s = s_ * s_ * s_;
+
+    return [
+      linearToSrgb(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+      linearToSrgb(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+      linearToSrgb(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s)
+    ];
+  }
+
   /** Largest chroma reachable in sRGB, used to normalise C onto 0-100. */
   var MAX_OKLCH_CHROMA = 0.33;
 
@@ -276,12 +298,18 @@
     ];
   }
 
+  /**
+   * Squared Euclidean distance in OKLab.
+   *
+   * No channel weighting: OKLab is constructed so that plain Euclidean
+   * distance already approximates perceived difference. The luma-weighted RGB
+   * distance this replaces was a crude stand-in for the same idea.
+   */
   function distanceSq(a, b) {
-    var dr = a[0] - b[0];
-    var dg = a[1] - b[1];
+    var dL = a[0] - b[0];
+    var da = a[1] - b[1];
     var db = a[2] - b[2];
-    // Weighted to approximate perceived difference (green matters most).
-    return dr * dr * 0.30 + dg * dg * 0.59 + db * db * 0.11;
+    return dL * dL + da * da + db * db;
   }
 
   // ---------------------------------------------------------------------
@@ -337,25 +365,43 @@
    * Cluster pixels into a palette.
    * @returns {{dominant: Object, palette: Array}}
    */
+  /**
+   * Cluster pixels into a palette.
+   *
+   * Clustering runs in OKLab, not RGB. Equal distances there are roughly equal
+   * perceived differences, so the clusters split where the eye sees a boundary:
+   * a dark red and a bright red separate, while two near-identical greens merge
+   * instead of wasting a slot. Centroids are averaged in OKLab and converted
+   * back to sRGB only at the end.
+   *
+   * @param {Array} pixels [r,g,b] triples
+   * @returns {{dominant: Object, palette: Array}}
+   */
   function extractPalette(pixels, colorCount, maxIterations) {
     var k = Math.max(1, Math.min(colorCount || 5, pixels.length));
     var iterations = maxIterations || 24;
     var rand = makeRandom(pixels.length * 2654435761 % 4294967296);
 
-    var centroids = initCentroids(pixels, k, rand);
+    // Convert once; every comparison below is perceptual from here on.
+    var lab = new Array(pixels.length);
+    for (var p = 0; p < pixels.length; p++) {
+      lab[p] = rgbToOklab(pixels[p][0], pixels[p][1], pixels[p][2]);
+    }
+
+    var centroids = initCentroids(lab, k, rand);
     k = centroids.length;
 
-    var assignment = new Array(pixels.length);
+    var assignment = new Array(lab.length);
     var counts;
 
     for (var iter = 0; iter < iterations; iter++) {
       var moved = false;
 
-      for (var i = 0; i < pixels.length; i++) {
+      for (var i = 0; i < lab.length; i++) {
         var best = 0;
         var bestDist = Infinity;
         for (var c = 0; c < k; c++) {
-          var d = distanceSq(pixels[i], centroids[c]);
+          var d = distanceSq(lab[i], centroids[c]);
           if (d < bestDist) { bestDist = d; best = c; }
         }
         if (assignment[i] !== best) { assignment[i] = best; moved = true; }
@@ -363,13 +409,13 @@
 
       var sums = [];
       counts = [];
-      for (var s = 0; s < k; s++) { sums.push([0, 0, 0]); counts.push(0); }
+      for (var s2 = 0; s2 < k; s2++) { sums.push([0, 0, 0]); counts.push(0); }
 
-      for (var p = 0; p < pixels.length; p++) {
-        var cluster = assignment[p];
-        sums[cluster][0] += pixels[p][0];
-        sums[cluster][1] += pixels[p][1];
-        sums[cluster][2] += pixels[p][2];
+      for (var q = 0; q < lab.length; q++) {
+        var cluster = assignment[q];
+        sums[cluster][0] += lab[q][0];
+        sums[cluster][1] += lab[q][1];
+        sums[cluster][2] += lab[q][2];
         counts[cluster]++;
       }
 
@@ -388,17 +434,13 @@
     var palette = [];
     for (var n = 0; n < k; n++) {
       if (counts[n] === 0) continue;
-      var rgb = [
-        Math.round(centroids[n][0]),
-        Math.round(centroids[n][1]),
-        Math.round(centroids[n][2])
-      ];
+      var rgb = oklabToRgb(centroids[n][0], centroids[n][1], centroids[n][2]);
       palette.push({
         hex: rgbToHex(rgb[0], rgb[1], rgb[2]),
         rgb: rgb,
         hsl: rgbToHsl(rgb[0], rgb[1], rgb[2]),
         oklch: rgbToOklch(rgb[0], rgb[1], rgb[2]),
-        dominance: counts[n] / pixels.length
+        dominance: counts[n] / lab.length
       });
     }
 

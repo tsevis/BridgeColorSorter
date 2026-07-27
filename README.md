@@ -75,9 +75,11 @@ panel to other machines, sign it as a `.zxp` instead of relying on debug mode.
 2. Each image is decoded **by Chromium itself** — read from disk with Node,
    wrapped in a Blob URL, drawn to a canvas, and read back as real pixels.
    Camera raw, PSD, TIFF and HEIC are transcoded first with macOS `sips`.
-3. Pixels are clustered with k-means++ (seeded deterministically, so re-running
-   gives the same palette) to get a dominant colour, a palette, and each
-   colour's share of the frame.
+3. Pixels are clustered with k-means++ **in OKLab** (seeded deterministically,
+   so re-running gives the same palette) to get a dominant colour, a palette,
+   and each colour's share of the frame. Clustering perceptually means the
+   splits fall where the eye sees a boundary: a dark red and a bright red stay
+   separate, while two near-identical greens merge instead of wasting a slot.
 4. Results are written back into the files as XMP under the namespace
    `http://ns.adobe.com/colorxbridge/1.0/` — embedded where the format allows,
    otherwise as an `.xmp` sidecar.
