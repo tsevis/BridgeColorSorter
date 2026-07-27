@@ -134,6 +134,29 @@ descending values. Greys use `Z` for the hue field, which sorts after every
 other letter. Your original filename follows the prefix intact and is also
 written to `colorxbridge:originalName`, so **Undo rename** is exact.
 
+### Why OKLCH and not HSL
+
+Sorting by HSL hue looks wrong even when the numbers are right, for three
+reasons that all showed up in a real red-heavy folder:
+
+| Problem | Example |
+|---|---|
+| Hue collapses unlike colours | A pale pink and a deep crimson are **both `H353`**, so they land side by side |
+| Hue is unstable at low saturation | A near-grey reports `H348` — the middle of the reds — and drops into the run |
+| HSL lightness is not perceived lightness | Pure yellow and pure blue are both `L50`, though yellow is far brighter |
+
+OKLCH fixes all three: equal numeric steps are roughly equal perceived steps.
+The same pair above becomes `C16 L87` and `C46 L41` — clearly distinct — and
+the near-grey reads `C4`, correctly neutral.
+
+### Hue bands
+
+Sorting on raw hue lets a 1° difference outrank everything else, so the
+secondary criterion never speaks and the grid looks noisy. Banding hue (24 by
+default) groups near-hues so lightness orders them *within* the band, producing
+the dark-to-light runs that make a colour grid read as sorted. Set it to
+*Continuous* for the finest ordering, or 8–12 bands for broad colour blocks.
+
 ### Which colour represents an image
 
 - **Balanced** (default) — among clusters that are genuinely colourful and

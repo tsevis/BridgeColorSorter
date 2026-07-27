@@ -213,6 +213,69 @@
     return [hue, Math.round(s * 100), Math.round(l * 100)];
   }
 
+  // ---------------------------------------------------------------------
+  // OKLab / OKLCH
+  //
+  // HSL is not a perceptual space, and sorting by HSL hue is why a colour sort
+  // looks wrong even when it is numerically right:
+  //
+  //   - A pale pink and a deep crimson both report hue 0, so they land next to
+  //     each other despite looking nothing alike.
+  //   - Hue is unstable at low saturation: a near-grey gets an essentially
+  //     random hue and drops into the middle of the reds.
+  //   - HSL "lightness" is not perceived lightness. Pure yellow and pure blue
+  //     are both L=50, though yellow is far brighter to the eye.
+  //
+  // OKLab fixes all three: equal numeric steps are roughly equal perceived
+  // steps. https://bottosson.github.io/posts/oklab/
+  // ---------------------------------------------------------------------
+
+  function srgbToLinear(c) {
+    c /= 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  }
+
+  /** @returns {[number, number, number]} OKLab L (0-1), a, b */
+  function rgbToOklab(r, g, b) {
+    var lr = srgbToLinear(r);
+    var lg = srgbToLinear(g);
+    var lb = srgbToLinear(b);
+
+    var l = 0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb;
+    var m = 0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb;
+    var s = 0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb;
+
+    var l_ = Math.cbrt(l);
+    var m_ = Math.cbrt(m);
+    var s_ = Math.cbrt(s);
+
+    return [
+      0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
+      1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
+      0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
+    ];
+  }
+
+  /** Largest chroma reachable in sRGB, used to normalise C onto 0-100. */
+  var MAX_OKLCH_CHROMA = 0.33;
+
+  /**
+   * @returns {[number, number, number]} L 0-100, C 0-100, h 0-360
+   * Same shape as the HSL triple, so it drops into the same sort machinery.
+   */
+  function rgbToOklch(r, g, b) {
+    var lab = rgbToOklab(r, g, b);
+    var C = Math.sqrt(lab[1] * lab[1] + lab[2] * lab[2]);
+    var h = Math.atan2(lab[2], lab[1]) * 180 / Math.PI;
+    if (h < 0) h += 360;
+
+    return [
+      Math.round(lab[0] * 100),
+      Math.round(Math.min(1, C / MAX_OKLCH_CHROMA) * 100),
+      Math.round(h) % 360
+    ];
+  }
+
   function distanceSq(a, b) {
     var dr = a[0] - b[0];
     var dg = a[1] - b[1];
@@ -334,6 +397,7 @@
         hex: rgbToHex(rgb[0], rgb[1], rgb[2]),
         rgb: rgb,
         hsl: rgbToHsl(rgb[0], rgb[1], rgb[2]),
+        oklch: rgbToOklch(rgb[0], rgb[1], rgb[2]),
         dominance: counts[n] / pixels.length
       });
     }
@@ -376,23 +440,25 @@
         hex: rgbToHex(rgb[0], rgb[1], rgb[2]),
         rgb: rgb,
         hsl: rgbToHsl(rgb[0], rgb[1], rgb[2]),
+        oklch: rgbToOklch(rgb[0], rgb[1], rgb[2]),
         dominance: 1
       };
     }
 
-    var MIN_SATURATION = 15;  // below this a colour reads as neutral
-    var MIN_SHARE = 0.08;     // ignore specks; they are not what the image "is"
+    var MIN_CHROMA = 8;    // OKLCH chroma below this reads as neutral
+    var MIN_SHARE = 0.08;  // ignore specks; they are not what the image "is"
 
     var best = null;
     var bestScore = -1;
 
     for (var j = 0; j < palette.length; j++) {
       var c = palette[j];
-      if (c.hsl[1] < MIN_SATURATION || c.dominance < MIN_SHARE) continue;
+      var chroma = c.oklch ? c.oklch[1] : c.hsl[1];
+      if (chroma < MIN_CHROMA || c.dominance < MIN_SHARE) continue;
 
       // Area still leads, but chroma can lift a smaller vivid patch above a
       // larger dull one. The exponent keeps area from being overwhelmed.
-      var score = c.dominance * Math.pow(c.hsl[1] / 100, 0.6);
+      var score = c.dominance * Math.pow(chroma / 100, 0.6);
       if (score > bestScore) { bestScore = score; best = c; }
     }
 
@@ -425,6 +491,7 @@
   var api = {
     analyze: analyze,
     pickRepresentative: pickRepresentative,
+    rgbToOklch: rgbToOklch,
     decode: decode,
     extractPalette: extractPalette,
     isSupported: isSupported,

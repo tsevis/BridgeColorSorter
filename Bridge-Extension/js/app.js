@@ -29,15 +29,19 @@
     reverse: false,
     busy: false,
     criteria: {
+      // Hue alone leaves the within-band order to the filename tiebreak, which
+      // reads as noise. Lightness as the tiebreaker gives each hue band a
+      // dark-to-light run, which is what makes the grid look sorted.
       hue:       { on: true,  desc: false },
       chroma:    { on: false, desc: false },
-      lightness: { on: false, desc: false },
+      lightness: { on: true,  desc: false },
       dominance: { on: false, desc: true }
     },
     settings: {
       colorCount: 5,
       sampleSize: 160,
       representative: 'balanced',
+      hueBands: 24,
       writeXmp: true,
       writeKeywords: true // additive; drives Bridge's Filter panel
     }
@@ -194,6 +198,7 @@
         rebuildOrder();
         renderSwatches();
         renderResults();
+        updateRenamePreview();
 
         var note = count + ' analysed';
         if (outcome.errors.length) note += ', ' + outcome.errors.length + ' skipped';
@@ -283,8 +288,28 @@
   // Sorting
   //= ==========================================================================
 
-  /** Below this saturation a colour has no meaningful hue. */
-  var ACHROMATIC_SATURATION = 10;
+  /** Below this OKLCH chroma a colour has no meaningful hue. */
+  var ACHROMATIC_CHROMA = 8;
+
+  /** Perceptual coordinates of a colour: L 0-100, C 0-100, h 0-360. */
+  function lch(colour) {
+    return colour.oklch ||
+      ColorEngine.rgbToOklch(colour.rgb[0], colour.rgb[1], colour.rgb[2]);
+  }
+
+  /**
+   * Quantise hue into bands.
+   *
+   * Sorting on raw hue lets a 1-degree difference outrank everything else, so
+   * a secondary criterion never gets to speak and the grid looks noisy. Banding
+   * groups near-hues together and lets lightness or chroma order them within
+   * the band, which is what makes a colour grid read as smooth runs.
+   */
+  function hueBand(h) {
+    var n = state.settings.hueBands;
+    if (!n) return h;                     // 0 = continuous
+    return Math.floor(h / (360 / n));
+  }
 
   /**
    * The criteria, in the fixed order they are applied. The first ticked one is
@@ -296,11 +321,11 @@
    */
   var CRITERIA = [
     { key: 'hue', label: 'hue', letter: 'H', max: 359,
-      get: function (c) { return c.hsl[0]; } },
+      get: function (c) { return hueBand(lch(c)[2]); } },
     { key: 'chroma', label: 'chroma', letter: 'C', max: 100,
-      get: function (c) { return c.hsl[1]; } },
+      get: function (c) { return lch(c)[1]; } },
     { key: 'lightness', label: 'lightness', letter: 'L', max: 100,
-      get: function (c) { return c.hsl[2]; } },
+      get: function (c) { return lch(c)[0]; } },
     { key: 'dominance', label: 'dominance', letter: 'D', max: 100,
       get: function (c) { return Math.round(c.dominance * 100); } }
   ];
@@ -313,7 +338,7 @@
   }
 
   function isAchromatic(colour) {
-    return colour.hsl[1] < ACHROMATIC_SATURATION;
+    return lch(colour)[1] < ACHROMATIC_CHROMA;
   }
 
   function pad(n, width) {
@@ -345,7 +370,8 @@
         var fa = isAchromatic(ca);
         var fb = isAchromatic(cb);
         if (fa !== fb) return fa ? 1 : -1;      // greys always last
-        d = fa ? (ca.hsl[2] - cb.hsl[2]) : (ca.hsl[0] - cb.hsl[0]);
+        d = fa ? (lch(ca)[0] - lch(cb)[0])      // greys ordered by lightness
+               : (hueBand(lch(ca)[2]) - hueBand(lch(cb)[2]));
       } else {
         d = c.get(ca) - c.get(cb);
       }
@@ -373,7 +399,7 @@
       var desc = state.criteria[c.key].desc;
 
       if (c.key === 'hue' && isAchromatic(colour)) {
-        parts.push('Z' + pad(colour.hsl[2], FIELD_WIDTH));
+        parts.push('Z' + pad(lch(colour)[0], FIELD_WIDTH));
         return;
       }
 
@@ -732,7 +758,7 @@
 
     host.innerHTML = shown.map(function (file) {
       var rec = state.results[file];
-      var d = rec.dominant;
+      var d = repOf(rec);
       var strip = (rec.palette || []).slice(0, 5).map(function (c) {
         return '<i style="background:' + escapeHtml(c.hex) + '"></i>';
       }).join('');
@@ -744,8 +770,8 @@
         escapeHtml(baseName(file)) + '</span>' +
         '</div>' +
         '<div class="result-meta">' + escapeHtml(rec.colorName) + ' · ' +
-        escapeHtml(d.hex) + ' · H' + Math.round(d.hsl[0]) +
-        ' S' + Math.round(d.hsl[1]) + ' L' + Math.round(d.hsl[2]) +
+        escapeHtml(d.hex) + ' · h' + lch(d)[2] +
+        ' C' + lch(d)[1] + ' L' + lch(d)[0] +
         ' · ' + Math.round(d.dominance * 100) + '%</div>' +
         '<div class="strip">' + strip + '</div>' +
         '</div>';
@@ -843,6 +869,15 @@
           applySortQuietly();
         });
       });
+
+    var bandSelect = $('hueBandSelect');
+    if (bandSelect) {
+      bandSelect.value = String(state.settings.hueBands);
+      bandSelect.addEventListener('change', function () {
+        state.settings.hueBands = parseInt(bandSelect.value, 10) || 0;
+        applySortQuietly();
+      });
+    }
 
     var repSelect = $('representativeSelect');
     if (repSelect) {

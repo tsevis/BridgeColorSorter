@@ -27,7 +27,8 @@
         <h2>Order</h2>
       </div>
       <p class="hint">Tick the criteria to sort by. They apply top to bottom —
-        the first is the primary sort, the rest break ties.</p>
+        the first is the primary sort, the rest break ties. Measured in
+        <strong>OKLCH</strong>, so equal steps look equal.</p>
 
       <div id="criteria" class="criteria">
         <label class="criterion">
@@ -41,7 +42,7 @@
           <button class="dir" data-dir="chroma">▲</button>
         </label>
         <label class="criterion">
-          <input type="checkbox" data-criterion="lightness">
+          <input type="checkbox" data-criterion="lightness" checked>
           <span class="criterion-name">Lightness</span>
           <button class="dir" data-dir="lightness">▲</button>
         </label>
@@ -49,6 +50,18 @@
           <input type="checkbox" data-criterion="dominance">
           <span class="criterion-name">Dominance</span>
           <button class="dir" data-dir="dominance">▼</button>
+        </label>
+      </div>
+
+      <div class="row">
+        <label class="inline">Hue bands
+          <select id="hueBandSelect" class="select">
+            <option value="0">Continuous (finest)</option>
+            <option value="36">36 bands</option>
+            <option value="24">24 bands</option>
+            <option value="12">12 bands</option>
+            <option value="8">8 bands</option>
+          </select>
         </label>
       </div>
 
