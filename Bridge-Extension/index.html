@@ -26,6 +26,17 @@
       <div class="block-head">
         <h2>Order</h2>
       </div>
+      <div class="row">
+        <label class="inline">Order by
+          <select id="sortModeSelect" class="select">
+            <option value="criteria">Colour criteria</option>
+            <option value="similarity">Whole-palette similarity</option>
+          </select>
+        </label>
+      </div>
+      <p id="modeNote" class="note"></p>
+
+      <div id="criteriaBlock">
       <p class="hint">Tick the criteria to sort by. They apply top to bottom —
         the first is the primary sort, the rest break ties. Measured in
         <strong>OKLCH</strong>, so equal steps look equal.</p>
@@ -64,19 +75,20 @@
       </div>
 
       <div class="row">
+        <label class="criterion" style="flex:1">
+          <input type="checkbox" id="serpentineToggle" checked>
+          <span class="criterion-name">Smooth transitions between groups</span>
+        </label>
+      </div>
+      </div>
+
+      <div class="row">
         <label class="inline">Colour used
           <select id="representativeSelect" class="select">
             <option value="balanced">Balanced (recommended)</option>
             <option value="dominant">Dominant only</option>
             <option value="average">Average</option>
           </select>
-        </label>
-      </div>
-
-      <div class="row">
-        <label class="criterion" style="flex:1">
-          <input type="checkbox" id="serpentineToggle" checked>
-          <span class="criterion-name">Smooth transitions between groups</span>
         </label>
       </div>
 
@@ -141,6 +153,7 @@
   <script src="js/CSInterface.js"></script>
   <script src="js/colorNames.js"></script>
   <script src="js/analyzer/ColorEngine.js"></script>
+  <script src="js/similarity.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

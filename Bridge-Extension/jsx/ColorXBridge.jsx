@@ -595,8 +595,12 @@ function cxbApplyLabels(jsonPath) {
 
 var CXB_ORIGINAL_NAME = "originalName";
 
-/** Any prefix this panel has written - never let them stack. */
-var CXB_PREFIX_RE = /^(?:[A-Z]\d{3}(?:-[A-Z]\d{3})*_|\d{4,}_)/;
+/**
+ * Any prefix this panel has written - never let them stack.
+ * \d{3,} rather than \d{3}: the similarity prefix uses a wider sequence field
+ * (P0000), which a fixed width silently failed to match.
+ */
+var CXB_PREFIX_RE = /^(?:[A-Z]\d{3,}(?:-[A-Z]\d{3,})*_|\d{4,}_)/;
 
 function cxbBaseName(path) {
   var parts = String(path).split("/");

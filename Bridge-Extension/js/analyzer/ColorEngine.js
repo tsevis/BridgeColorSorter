@@ -534,6 +534,7 @@
     analyze: analyze,
     pickRepresentative: pickRepresentative,
     rgbToOklch: rgbToOklch,
+    rgbToOklab: rgbToOklab,
     decode: decode,
     extractPalette: extractPalette,
     isSupported: isSupported,

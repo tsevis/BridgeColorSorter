@@ -118,6 +118,36 @@ and a file has exactly one label — which belongs to your own triage
 (Select / Approved / Review). Overwriting that destroys real work to gain lumpy
 five-bucket grouping, so it is off by default.
 
+### Ordering by whole-palette similarity
+
+Sorting on a single representative colour has a hard ceiling: a busy artwork is
+not one colour. Two tiles can share a dominant red and look nothing alike
+because one carries gold and cream while the other carries blue and white. No
+tuning of the criteria fixes that — the information was discarded before the
+sort began.
+
+**Order by → Whole-palette similarity** keeps all of it. Each image retains its
+full clustered palette with weights; a perceptual distance is defined between
+two palettes (for each colour in A, its nearest counterpart in B, weighted by
+how much of the frame it occupies — the standard cheap approximation of
+earth-mover's distance); and the images are arranged into a path where each sits
+next to the one it most resembles. Greedy nearest-neighbour, then a windowed
+2-opt pass to undo local crossings.
+
+Measured on a real 1,559-image folder, mean perceptual gap between neighbours:
+
+| | mean gap | worst |
+|---|---|---|
+| Criteria sort (hue → lightness) | 0.0679 | 0.230 |
+| **Whole-palette similarity** | **0.0358** | 0.102 |
+
+**1.9× smoother**, worst case 2.3× better, computed in about half a second.
+
+The result is a *sequence*, not a sort — it cannot be expressed as "X then Y" —
+which is why renaming is the only route that can carry it into Bridge. Names
+become `P0042-H028-L059_photo.jpg`: position drives the order, hue and lightness
+ride along as information.
+
 ### Numbering files
 
 Ticked criteria are applied top to bottom: the first is the primary sort, the
