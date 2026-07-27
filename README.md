@@ -121,75 +121,34 @@ five-bucket grouping, so it is off by default.
 ### Numbering files
 
 Ticked criteria are applied top to bottom: the first is the primary sort, the
-rest break ties. Each becomes a fixed-width, zero-padded field in the prefix, so
-a plain alphabetical sort — all Bridge can do — reproduces the order exactly.
+rest break ties. Each appears as its own labelled field in the prefix, in
+priority order, so the name says what it sorted on.
 
 ```
-H000-L050_01-pure-red.png     hue 0,   lightness 50
-H227-L047_11-mixed-blue.png   hue 227, lightness 47
-H227-L051_06-pure-blue.png    same hue, split by lightness
-Z003-L003_09-black.png        Z = achromatic, parked at the end
+H002-L059_photo.jpg        hue band 2, lightness 59
+Z013-L013_photo.jpg        Z = achromatic band, parked at the end
 ```
 
-A descending criterion stores its complement, so ascending text still yields
-descending values. Greys use `Z` for the hue field, which sorts after every
-other letter. Your original filename follows the prefix intact and is also
+With **Smooth transitions** on, a rank field is inserted *before* the fine
+value:
+
+```
+H003-S000-L070_photo.jpg   hue band 3, first in that band, lightness 70
+H003-S001-L067_photo.jpg   second in the band - lightness descends here,
+                           because this group is a reversed one
+```
+
+The rank is necessary because smoothing reverses every second group, and a raw
+value cannot express that: sorting alphabetically on lightness would undo the
+reversal. Ordering therefore runs on the grouping fields then the rank, while
+the final value rides along as information.
+
+Separators are hyphens inside the prefix and an underscore only at the boundary
+with your filename, so the original stays unambiguous to strip. It is also
 written to `colorxbridge:originalName`, so **Undo rename** is exact.
 
-### Why OKLCH and not HSL
-
-Sorting by HSL hue looks wrong even when the numbers are right, for three
-reasons that all showed up in a real red-heavy folder:
-
-| Problem | Example |
-|---|---|
-| Hue collapses unlike colours | A pale pink and a deep crimson are **both `H353`**, so they land side by side |
-| Hue is unstable at low saturation | A near-grey reports `H348` — the middle of the reds — and drops into the run |
-| HSL lightness is not perceived lightness | Pure yellow and pure blue are both `L50`, though yellow is far brighter |
-
-OKLCH fixes all three: equal numeric steps are roughly equal perceived steps.
-The same pair above becomes `C16 L87` and `C46 L41` — clearly distinct — and
-the near-grey reads `C4`, correctly neutral.
-
-### Grouping, and why the sort looked noisy
-
-A criterion used at full resolution acts as a near-unique key, so the next
-criterion never gets to order anything. Measured on a real 1,559-image folder
-sorted by hue → chroma → lightness, chroma at full 0-100 resolution produced
-**452 groups averaging 3.4 images, 166 of them singletons**. Lightness therefore
-ordered almost nothing and jumped by more than 20 points between **11 %** of
-neighbours — visible as noise across the grid.
-
-So every ticked criterion *except the last* is quantised into buckets, and the
-last is left continuous to order finely inside them. **Grouping** sets how
-coarse those buckets are:
-
-| | hue | chroma | lightness | dominance |
-|---|---|---|---|---|
-| Fine | 24 | 8 | 8 | 5 |
-| Medium *(default)* | 12 | 5 | 5 | 4 |
-| Coarse | 8 | 3 | 3 | 3 |
-
-### Smooth transitions
-
-Even with good groups, the fine criterion resets at every group boundary — a
-smooth run, a hard snap back, another smooth run. **Smooth transitions**
-reverses every second group, so the runs alternate direction and meet at their
-matching ends.
-
-Measured on the same folder, mean step in lightness between neighbours:
-
-| Setting | mean step | jumps > 20 |
-|---|---|---|
-| Full resolution (the original problem) | 7.8 | 11 % |
-| Fine grouping | 3.2 | 5 % |
-| Medium grouping | 1.7 | 2 % |
-| **Medium + smoothing** *(default)* | **1.2** | **1 %** |
-| Coarse + smoothing | 0.7 | 1 % |
-
-Because smoothing reorders within a group in a way the raw values cannot
-express, the filename prefix carries the grouping fields plus a rank:
-`H004-C002-S007_name.jpg`.
+Defaults are **coarse grouping, chroma unticked, smoothing on** — measured as
+the smoothest combination on a real 1,559-image folder.
 
 ### Which colour represents an image
 

@@ -41,7 +41,7 @@
       colorCount: 5,
       sampleSize: 160,
       representative: 'balanced',
-      grouping: 'medium',
+      grouping: 'coarse',
       serpentine: true,
       writeXmp: true,
       writeKeywords: true // additive; drives Bridge's Filter panel
@@ -456,29 +456,57 @@
   /**
    * Filename prefixes for the finished order.
    *
-   * Grouping fields stay readable, and a rank within the group carries the fine
-   * ordering - including any serpentine reversal, which the raw criterion
-   * values could not express on their own.
+   * Every ticked criterion appears as its own labelled field, in priority
+   * order, so the name says what it sorted on: H002-L059_photo.jpg is hue
+   * band 2, lightness 59.
+   *
+   * Smoothing complicates this. It reverses every second group, and a raw
+   * value cannot express that - sorting alphabetically on lightness would undo
+   * the reversal. So when smoothing is on, a rank field is inserted *before*
+   * the fine value: H002-S045-L059_photo.jpg. Sorting then runs on H then S,
+   * while L rides along purely as information.
+   *
+   * Separators are hyphens inside the prefix and an underscore only at the
+   * boundary, so the original filename stays unambiguous to strip on Undo.
    */
   function buildPrefixes(files) {
     var list = enabledCriteria();
+    if (list.length === 0) return {};
+
+    var last = list[list.length - 1];
+    var smoothing = state.settings.serpentine;
     var out = {};
     var rank = 0;
     var lastKey = null;
 
     files.forEach(function (f) {
       var rec = state.results[f];
+      var colour = repOf(rec);
       var key = groupKey(rec);
       var joined = key.join(',');
       if (joined !== lastKey) { rank = 0; lastKey = joined; }
 
       var parts = [];
+
+      // Grouping criteria, quantised, in priority order.
       for (var i = 0; i < key.length; i++) {
         parts.push(key[i] === ACHROMATIC_BUCKET
-          ? 'Z' + pad(lch(repOf(rec))[0], FIELD_WIDTH)
+          ? 'Z' + pad(lch(colour)[0], FIELD_WIDTH)
           : list[i].letter + pad(key[i], FIELD_WIDTH));
       }
-      parts.push('S' + pad(rank++, FIELD_WIDTH));
+
+      // The rank has to precede the fine value, or the value would drive the
+      // sort and cancel the serpentine reversal.
+      if (smoothing) parts.push('S' + pad(rank, FIELD_WIDTH));
+      rank++;
+
+      // The final criterion's real value - ordering when unsmoothed,
+      // information when smoothed.
+      var fine = (last.key === 'hue' && isAchromatic(colour))
+        ? lch(colour)[0]
+        : last.raw(colour);
+      parts.push(last.letter + pad(fine, FIELD_WIDTH));
+
       out[f] = parts.join('-');
     });
 
