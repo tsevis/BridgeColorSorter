@@ -1,0 +1,28 @@
+{
+  "name": "ColorXBridge",
+  "version": "1.0.0",
+  "description": "Search & Sort by Color",
+  "main": "src/main.js",
+  "scripts": {
+    "sync-engine": "node scripts/sync-engine.js",
+    "prestart": "npm run sync-engine",
+    "prebuild": "npm run sync-engine",
+    "start": "electron .",
+    "build": "electron-builder --mac"
+  },
+  "dependencies": {
+    "sharp": "^0.33.2"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.colorxbridge.app",
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.photography"
+    },
+    "files": ["src/**/*", "assets/**/*"]
+  }
+}

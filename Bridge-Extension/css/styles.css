@@ -1,0 +1,301 @@
+/* ColorXBridge panel - sized and coloured to sit inside Adobe Bridge. */
+
+:root {
+  --cxb-bg: #323232;
+  --cxb-surface: #3c3c3c;
+  --cxb-surface-2: #2b2b2b;
+  --cxb-border: #4d4d4d;
+  --cxb-text: #e8e8e8;
+  --cxb-text-dim: #a0a0a0;
+  --cxb-accent: #2d8ceb;
+  --cxb-ok: #4caf72;
+  --cxb-error: #e5714f;
+}
+
+:root[data-theme="light"] {
+  --cxb-surface: #ececec;
+  --cxb-surface-2: #f6f6f6;
+  --cxb-border: #cfcfcf;
+  --cxb-text: #1d1d1d;
+  --cxb-text-dim: #666;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--cxb-bg);
+  color: var(--cxb-text);
+  font: 11px/1.45 -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
+  overflow: hidden;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 10px;
+  gap: 10px;
+}
+
+/* ---------- header ---------- */
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.host { color: var(--cxb-text-dim); font-size: 10px; }
+
+/* ---------- buttons ---------- */
+
+.actions { display: flex; gap: 6px; flex: 0 0 auto; }
+
+.btn {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--cxb-border);
+  border-radius: 4px;
+  background: var(--cxb-surface);
+  color: var(--cxb-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn:hover { border-color: var(--cxb-accent); }
+.btn:active { transform: translateY(1px); }
+
+.btn-primary {
+  background: var(--cxb-accent);
+  border-color: var(--cxb-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn-small { flex: 0 0 auto; padding: 4px 10px; }
+
+.link {
+  border: 0;
+  background: none;
+  color: var(--cxb-text-dim);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.link:hover { color: var(--cxb-text); }
+
+/* ---------- blocks ---------- */
+
+.block {
+  background: var(--cxb-surface-2);
+  border: 1px solid var(--cxb-border);
+  border-radius: 5px;
+  padding: 8px;
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.block.grow { flex: 1 1 auto; display: flex; flex-direction: column; }
+
+.block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.block-head h2 {
+  margin: 0;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--cxb-text-dim);
+  font-weight: 600;
+}
+
+.count { color: var(--cxb-text-dim); font-size: 10px; }
+
+.row { display: flex; gap: 6px; align-items: center; }
+
+.select {
+  /* Sized to its content rather than flex:1 - letting it absorb all the free
+     width pushed the Sort button to the far right edge, where it was easy to
+     miss entirely. It may still shrink on a narrow panel. */
+  flex: 0 1 170px;
+  min-width: 90px;
+  padding: 4px 6px;
+  background: var(--cxb-surface);
+  color: var(--cxb-text);
+  border: 1px solid var(--cxb-border);
+  border-radius: 4px;
+  font: inherit;
+}
+
+/* Keep the controls grouped at the left instead of spreading out. */
+.row { flex-wrap: wrap; justify-content: flex-start; }
+
+.note {
+  margin: 6px 0 0;
+  font-size: 10px;
+  color: var(--cxb-text-dim);
+  word-break: break-word;
+}
+
+/* ---------- progress ---------- */
+
+.progress-section { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+
+.progress-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--cxb-surface);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--cxb-accent);
+  transition: width 0.15s linear;
+}
+
+.progress-text {
+  font-size: 10px;
+  color: var(--cxb-text-dim);
+  min-width: 56px;
+  text-align: right;
+}
+
+/* ---------- swatches ---------- */
+
+.swatches { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.swatch {
+  position: relative;
+  width: 34px;
+  height: 26px;
+  border: 1px solid var(--cxb-border);
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.swatch:hover { outline: 1px solid var(--cxb-text-dim); }
+
+.swatch.active {
+  outline: 2px solid var(--cxb-accent);
+  outline-offset: 1px;
+}
+
+.swatch-count {
+  position: absolute;
+  right: 1px;
+  bottom: 0;
+  font-size: 9px;
+  color: #fff;
+  text-shadow: 0 0 3px #000, 0 0 2px #000;
+  padding: 0 2px;
+}
+
+/* ---------- results ---------- */
+
+.results { overflow-y: auto; flex: 1 1 auto; min-height: 60px; }
+
+.result {
+  padding: 5px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.result:hover { background: var(--cxb-surface); border-color: var(--cxb-border); }
+
+.result-top { display: flex; align-items: center; gap: 6px; }
+
+.chip {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--cxb-border);
+  flex: 0 0 auto;
+}
+
+.result-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-meta {
+  color: var(--cxb-text-dim);
+  font-size: 10px;
+  margin: 2px 0 3px 20px;
+}
+
+.strip { display: flex; gap: 2px; margin-left: 20px; }
+
+.strip i {
+  display: block;
+  height: 5px;
+  flex: 1;
+  border-radius: 1px;
+}
+
+.placeholder {
+  color: var(--cxb-text-dim);
+  font-style: italic;
+  padding: 8px 2px;
+}
+
+/* ---------- settings ---------- */
+
+summary {
+  cursor: pointer;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--cxb-text-dim);
+  font-weight: 600;
+}
+
+.settings { display: flex; flex-direction: column; gap: 7px; margin-top: 8px; }
+
+.field { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.field.checkbox { justify-content: flex-start; }
+
+.field input[type="number"] {
+  width: 56px;
+  padding: 3px 5px;
+  background: var(--cxb-surface);
+  color: var(--cxb-text);
+  border: 1px solid var(--cxb-border);
+  border-radius: 3px;
+  font: inherit;
+}
+
+/* ---------- footer ---------- */
+
+.footer {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--cxb-border);
+  padding-top: 6px;
+}
+
+.status { font-size: 10px; color: var(--cxb-text-dim); }
+.status.ok { color: var(--cxb-ok); }
+.status.error { color: var(--cxb-error); }

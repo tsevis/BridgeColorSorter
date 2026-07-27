@@ -1,0 +1,26 @@
+# Qwen Code Ignore File
+# Files that should be excluded from context
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.zxp
+
+# Cache
+.cache/
+*.cache
+
+# Logs
+*.log
+logs/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+.nyc_output/

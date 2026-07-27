@@ -1,0 +1,15 @@
+# Build output and dependencies
+node_modules/
+dist/
+*.dmg
+*.dmg.blockmap
+
+# Built application bundles (238 MB / 781 MB - rebuild with npm run build)
+ColorXBridge.app/
+macOS-App/dist/
+
+# macOS
+.DS_Store
+
+# CEP remote-debugging config - opens a DevTools port, never ship it
+.debug

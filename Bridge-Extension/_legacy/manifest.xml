@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ExtensionManifest Version="8.0"
+                   ExtensionBundleId="com.colorxbridge.panel"
+                   ExtensionBundleVersion="1.0.0"
+                   ExtensionBundleName="ColorXBridge"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+  <ExtensionList>
+    <Extension Id="com.colorxbridge.panel" ManifestVersion="8.0" />
+  </ExtensionList>
+
+  <ExecutionEnvironment>
+    <HostList>
+      <!-- Adobe Bridge 2020-2026 (CC 10.x - 16.x) -->
+      <Host Name="BRG" Version="[10.0,99.9]" />
+    </HostList>
+    <LocaleList>
+      <Locale Code="All" />
+    </LocaleList>
+    <RequiredRuntimeList>
+      <!-- Support all CSXS versions (Bridge CC 2020 - 2026) -->
+      <RequiredRuntime Name="CSXS" Version="9.0" />
+      <RequiredRuntime Name="CSXS" Version="10.0" />
+      <RequiredRuntime Name="CSXS" Version="11.0" />
+      <RequiredRuntime Name="CSXS" Version="12.0" />
+      <RequiredRuntime Name="CSXS" Version="13.0" />
+    </RequiredRuntimeList>
+  </ExecutionEnvironment>
+
+  <DispatchInfoList>
+    <Extension Id="com.colorxbridge.panel">
+      <DispatchInfo>
+        <Resources>
+          <MainPath>./index.html</MainPath>
+          <CEFCommandLine>
+            <Parameter>--enable-nodejs</Parameter>
+            <Parameter>--enable-nodejs-debugger</Parameter>
+            <Parameter>--mixed-context</Parameter>
+            <Parameter>--allow-file-access-from-files</Parameter>
+            <Parameter>--enable-logging</Parameter>
+            <Parameter>--log-level=3</Parameter>
+          </CEFCommandLine>
+          <ScriptPath>./js/bridge/BridgeController.jsx</ScriptPath>
+        </Resources>
+        <Lifecycle>
+          <AutoVisible>true</AutoVisible>
+        </Lifecycle>
+        <UI>
+          <Type>Panel</Type>
+          <Menu>ColorXBridge</Menu>
+          <Geometry>
+            <Size>
+              <Height>500</Height>
+              <Width>350</Width>
+            </Size>
+            <MinSize>
+              <Height>400</Height>
+              <Width>300</Width>
+            </MinSize>
+            <MaxSize>
+              <Height>900</Height>
+              <Width>600</Width>
+            </MaxSize>
+          </Geometry>
+          <Icons>
+            <Icon Type="Normal">assets/icons/icon-16.png</Icon>
+            <Icon Type="RollOver">assets/icons/icon-16-hover.png</Icon>
+            <Icon Type="Disabled">assets/icons/icon-16-disabled.png</Icon>
+            <Icon Type="LargeNormal">assets/icons/icon-32.png</Icon>
+            <Icon Type="LargeRollOver">assets/icons/icon-32-hover.png</Icon>
+            <Icon Type="LargeDisabled">assets/icons/icon-32-disabled.png</Icon>
+          </Icons>
+        </UI>
+      </DispatchInfo>
+    </Extension>
+  </DispatchInfoList>
+</ExtensionManifest>

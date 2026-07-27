@@ -1,0 +1,53 @@
+{
+  "name": "colorxbridge",
+  "version": "1.0.0",
+  "description": "Search & Sort by Color for Adobe Bridge",
+  "author": "ColorXBridge Team",
+  "license": "MIT",
+  "main": "js/main.js",
+  "scripts": {
+    "dev": "node scripts/watch.js",
+    "build": "node scripts/build.js",
+    "build:zxp": "node scripts/build.js --zxp",
+    "install": "node scripts/install.js",
+    "uninstall": "node scripts/install.js --uninstall",
+    "enable-cep": "node scripts/enable-cep.js",
+    "disable-cep": "node scripts/enable-cep.js --disable",
+    "status": "node scripts/install.js --status",
+    "icons": "node scripts/generate-icons.js",
+    "test": "jest test/",
+    "lint": "eslint js/"
+  },
+  "dependencies": {
+    "color-thief": "^2.4.0",
+    "sharp": "^0.33.2",
+    "better-sqlite3": "^9.4.3",
+    "crypto-js": "^4.2.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "eslint": "^8.57.0",
+    "zx": "^7.2.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "adobe",
+    "bridge",
+    "cep",
+    "extension",
+    "color",
+    "image",
+    "organization",
+    "xmp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/colorxbridge/colorxbridge"
+  },
+  "bugs": {
+    "url": "https://github.com/colorxbridge/colorxbridge/issues"
+  },
+  "homepage": "https://github.com/colorxbridge/colorxbridge#readme"
+}

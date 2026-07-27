@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ColorXBridge</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 13px;
+      background: rgba(255,255,255,0.85);
+      color: #1d1d1f;
+      padding: 14px;
+    }
+    h1 { font-size: 15px; text-align: center; margin-bottom: 10px; }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      margin: 5px 0;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .btn-primary { background: linear-gradient(135deg, #e94560, #ff6b6b); color: white; }
+    .btn-secondary { background: #f0f0f0; color: #1d1d1f; }
+    section { background: #f5f5f5; border-radius: 8px; padding: 12px; margin: 10px 0; }
+    h3 { font-size: 11px; color: #6e6e73; margin-bottom: 8px; text-transform: uppercase; }
+    #colorSwatches { display: flex; flex-wrap: wrap; gap: 6px; min-height: 50px; }
+    .swatch { width: 30px; height: 30px; border-radius: 4px; cursor: pointer; border: 2px solid transparent; }
+    .swatch:hover { border-color: white; transform: scale(1.1); }
+    .swatch.active { border-color: #feca57; box-shadow: 0 0 0 2px #feca57; }
+    #resultsList { max-height: 200px; overflow-y: auto; }
+    .result { display: flex; align-items: center; gap: 8px; padding: 6px; background: #fff; border-radius: 4px; margin-bottom: 4px; font-size: 11px; }
+    .color-preview { width: 20px; height: 20px; border-radius: 4px; }
+    .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .color-info { color: #6e6e73; font-size: 10px; }
+    select, input[type="number"] { padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; }
+    #status { text-align: center; font-size: 11px; color: #6e6e73; margin-top: 10px; }
+    .progress { height: 6px; background: #ddd; border-radius: 3px; overflow: hidden; margin: 10px 0; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, #e94560, #ff6b6b); width: 0%; transition: width 0.2s; }
+  </style>
+</head>
+<body>
+  <h1>🎨 ColorXBridge</h1>
+  
+  <button class="btn btn-primary" onclick="selectFiles()">📂 Open Files...</button>
+  <button class="btn btn-secondary" onclick="selectFolder()">📁 Open Folder...</button>
+  
+  <section>
+    <h3>Sort By</h3>
+    <select id="sortBy" style="width:100%;margin-bottom:8px;">
+      <option value="hue">Hue</option>
+      <option value="saturation">Saturation</option>
+      <option value="brightness">Brightness</option>
+      <option value="dominance">Dominance</option>
+    </select>
+    <button class="btn btn-secondary" onclick="sortImages()" style="padding:6px;">Apply Sort</button>
+  </section>
+  
+  <section>
+    <h3>Filter by Color</h3>
+    <div id="colorSwatches"><div style="color:#999;font-size:11px;padding:14px;">Analyze images to see colors</div></div>
+  </section>
+  
+  <div class="progress" id="progress" style="display:none;"><div class="progress-fill" id="progressFill"></div></div>
+  
+  <section>
+    <h3>Results</h3>
+    <div id="resultsList"><div style="color:#999;font-size:11px;padding:20px;text-align:center;">No results yet</div></div>
+  </section>
+  
+  <div id="status">Ready - Click "Open Files" or "Open Folder" to begin</div>
+  
+  <script>
+    const { ipcRenderer } = require('electron');
+    let results = {};
+    let activeFilter = null;
+    let tolerance = 15;
+    
+    function selectFiles() { ipcRenderer.send('select-files'); }
+    function selectFolder() { ipcRenderer.send('select-folder'); }
+    
+    ipcRenderer.on('files-selected', (e, files) => {
+      setStatus(`Analyzing ${files.length} images...`);
+      document.getElementById('progress').style.display = 'block';
+      ipcRenderer.send('analyze', files);
+    });
+    
+    ipcRenderer.on('analysis-result', (e, data) => {
+      document.getElementById('progress').style.display = 'none';
+      if (data.success && data.results) {
+        results = data.results;
+        displayResults();
+        updateSwatches();
+        setStatus(`Analyzed ${Object.keys(results).length} images`, 'success');
+      }
+    });
+    
+    function displayResults() {
+      const list = document.getElementById('resultsList');
+      const keys = Object.keys(results);
+      if (keys.length === 0) {
+        list.innerHTML = '<div style="color:#999;font-size:11px;padding:20px;text-align:center;">No results</div>';
+        return;
+      }
+      list.innerHTML = keys.map(f => {
+        const d = results[f].dominant;
+        const name = f.split('/').pop();
+        const hsl = d.hsl ? `H:${d.hsl[0]}° S:${d.hsl[1]}% L:${d.hsl[2]}%` : d.hex;
+        return `<div class="result" data-file="${f.replace(/"/g, '&quot;')}">
+          <div class="color-preview" style="background:${d.hex}"></div>
+          <span class="file-name">${name}</span>
+          <span class="color-info">${hsl}</span>
+        </div>`;
+      }).join('');
+    }
+    
+    function updateSwatches() {
+      const colors = new Map();
+      Object.values(results).forEach(r => {
+        if (r.palette) r.palette.forEach(c => {
+          if (!colors.has(c.hex) || colors.get(c.hex).dominance < c.dominance) colors.set(c.hex, c);
+        });
+      });
+      const list = Array.from(colors.values()).sort((a,b) => b.dominance - a.dominance).slice(0, 12);
+      document.getElementById('colorSwatches').innerHTML = list.map(c => 
+        `<div class="swatch" style="background:${c.hex}" data-hex="${c.hex}" data-hue="${c.hsl?c.hsl[0]:0}" title="${c.hex}"></div>`
+      ).join('');
+      document.querySelectorAll('.swatch').forEach(s => {
+        s.onclick = () => {
+          document.querySelectorAll('.swatch').forEach(x => x.classList.remove('active'));
+          if (!s.classList.contains('active')) {
+            s.classList.add('active');
+            activeFilter = { hex: s.dataset.hex, hue: parseFloat(s.dataset.hue) || 0 };
+            applyFilter();
+          } else {
+            activeFilter = null;
+            setStatus('Filter cleared');
+            document.querySelectorAll('.result').forEach(r => r.style.display = 'flex');
+          }
+        };
+      });
+    }
+    
+    function applyFilter() {
+      if (!activeFilter) return;
+      let count = 0;
+      document.querySelectorAll('.result').forEach(r => {
+        const file = r.getAttribute('data-file');
+        const data = results[file];
+        if (data && data.dominant.hsl) {
+          const diff = Math.abs(data.dominant.hsl[0] - activeFilter.hue);
+          const hueDiff = diff > 180 ? 360 - diff : diff;
+          r.style.display = hueDiff <= tolerance ? 'flex' : 'none';
+          if (hueDiff <= tolerance) count++;
+        }
+      });
+      setStatus(`Found ${count} matching images`, 'success');
+    }
+    
+    function sortImages() {
+      const by = document.getElementById('sortBy').value;
+      const keys = Object.keys(results).sort((a, b) => {
+        const ah = results[a].dominant.hsl || [0,0,0];
+        const bh = results[b].dominant.hsl || [0,0,0];
+        if (by === 'hue') return ah[0] - bh[0];
+        if (by === 'saturation') return ah[1] - bh[1];
+        if (by === 'brightness') return ah[2] - bh[2];
+        return 0;
+      });
+      results = Object.fromEntries(keys.map(k => [k, results[k]]));
+      displayResults();
+      setStatus(`Sorted by ${by}`, 'success');
+    }
+    
+    function setStatus(msg, type) {
+      document.getElementById('status').textContent = msg;
+      document.getElementById('status').style.color = type === 'success' ? '#34c759' : '#6e6e73';
+    }
+  </script>
+</body>
+</html>
