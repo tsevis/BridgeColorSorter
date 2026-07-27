@@ -26,20 +26,51 @@
       <div class="block-head">
         <h2>Order</h2>
       </div>
+      <p class="hint">Tick the criteria to sort by. They apply top to bottom —
+        the first is the primary sort, the rest break ties.</p>
+
+      <div id="criteria" class="criteria">
+        <label class="criterion">
+          <input type="checkbox" data-criterion="hue" checked>
+          <span class="criterion-name">Hue</span>
+          <button class="dir" data-dir="hue" title="Ascending / descending">▲</button>
+        </label>
+        <label class="criterion">
+          <input type="checkbox" data-criterion="chroma">
+          <span class="criterion-name">Chroma (saturation)</span>
+          <button class="dir" data-dir="chroma">▲</button>
+        </label>
+        <label class="criterion">
+          <input type="checkbox" data-criterion="lightness">
+          <span class="criterion-name">Lightness</span>
+          <button class="dir" data-dir="lightness">▲</button>
+        </label>
+        <label class="criterion">
+          <input type="checkbox" data-criterion="dominance">
+          <span class="criterion-name">Dominance</span>
+          <button class="dir" data-dir="dominance">▼</button>
+        </label>
+      </div>
+
       <div class="row">
-        <select id="sortSelect" class="select">
-          <option value="hue">Hue</option>
-          <option value="saturation">Saturation</option>
-          <option value="brightness">Brightness</option>
-          <option value="dominance">Dominance</option>
-        </select>
-        <button id="sortBtn" class="btn btn-small">Sort</button>
-        <button id="reverseBtn" class="btn btn-small" title="Reverse the order">⇅</button>
+        <label class="inline">Colour used
+          <select id="representativeSelect" class="select">
+            <option value="balanced">Balanced (recommended)</option>
+            <option value="dominant">Dominant only</option>
+            <option value="average">Average</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="row">
+        <button id="sortBtn" class="btn btn-small">Sort list</button>
+        <button id="selectInBridgeBtn" class="btn btn-small">Select in Bridge</button>
       </div>
       <div class="row">
-        <button id="selectInBridgeBtn" class="btn btn-small">Select these in Bridge</button>
-        <button id="colourLabelsBtn" class="btn btn-small">Group grid by colour label…</button>
+        <button id="renameBtn" class="btn btn-primary btn-small">Number files for Bridge…</button>
+        <button id="undoRenameBtn" class="btn btn-small">Undo</button>
       </div>
+      <p id="renamePreview" class="note"></p>
       <p id="sortNote" class="note"></p>
     </section>
 

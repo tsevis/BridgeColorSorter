@@ -344,6 +344,62 @@
   }
 
   /**
+   * Choose the colour that best represents an image.
+   *
+   * Neither obvious choice works on its own:
+   *   - The *average* of a red-and-green image is a muddy brown that appears
+   *     nowhere in the picture.
+   *   - The *dominant* cluster is often a large neutral - a grey wall, a white
+   *     background - when a person looking at the image would call it "red".
+   *
+   * 'balanced' (the default) splits the difference: among clusters that are
+   * genuinely colourful and occupy a meaningful share of the frame, take the
+   * one with the best combination of area and chroma. If nothing is colourful,
+   * the image really is neutral, so fall back to the plain dominant cluster.
+   *
+   * @param {Array} palette sorted by dominance, descending
+   * @param {string} [mode] 'balanced' | 'dominant' | 'average'
+   */
+  function pickRepresentative(palette, mode) {
+    if (!palette || palette.length === 0) return null;
+    if (mode === 'dominant') return palette[0];
+
+    if (mode === 'average') {
+      var r = 0, g = 0, b = 0;
+      for (var i = 0; i < palette.length; i++) {
+        r += palette[i].rgb[0] * palette[i].dominance;
+        g += palette[i].rgb[1] * palette[i].dominance;
+        b += palette[i].rgb[2] * palette[i].dominance;
+      }
+      var rgb = [Math.round(r), Math.round(g), Math.round(b)];
+      return {
+        hex: rgbToHex(rgb[0], rgb[1], rgb[2]),
+        rgb: rgb,
+        hsl: rgbToHsl(rgb[0], rgb[1], rgb[2]),
+        dominance: 1
+      };
+    }
+
+    var MIN_SATURATION = 15;  // below this a colour reads as neutral
+    var MIN_SHARE = 0.08;     // ignore specks; they are not what the image "is"
+
+    var best = null;
+    var bestScore = -1;
+
+    for (var j = 0; j < palette.length; j++) {
+      var c = palette[j];
+      if (c.hsl[1] < MIN_SATURATION || c.dominance < MIN_SHARE) continue;
+
+      // Area still leads, but chroma can lift a smaller vivid patch above a
+      // larger dull one. The exponent keeps area from being overwhelmed.
+      var score = c.dominance * Math.pow(c.hsl[1] / 100, 0.6);
+      if (score > bestScore) { bestScore = score; best = c; }
+    }
+
+    return best || palette[0];
+  }
+
+  /**
    * Full analysis of one file.
    * @returns {Promise<Object>} { dominant, palette, metadata }
    */
@@ -368,6 +424,7 @@
 
   var api = {
     analyze: analyze,
+    pickRepresentative: pickRepresentative,
     decode: decode,
     extractPalette: extractPalette,
     isSupported: isSupported,

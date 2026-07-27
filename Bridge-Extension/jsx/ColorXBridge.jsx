@@ -580,6 +580,161 @@ function cxbApplyLabels(jsonPath) {
   }
 }
 
+//= ============================================================================
+// Numbering files so Bridge's grid follows the colour order
+//= ============================================================================
+//
+// Bridge's Sort menu takes a fixed enum and offers no way to register a
+// criterion, and its manual ("user") order cannot be set from a script. The
+// filename is the only ordering Bridge exposes that can carry arbitrary data,
+// so the colour order is encoded into a zero-padded prefix and Bridge is
+// switched to Sort > By Filename.
+//
+// The original name survives intact after the prefix, and is also written to
+// XMP, so Undo is exact even if the prefix format later changes.
+
+var CXB_ORIGINAL_NAME = "originalName";
+
+/** Any prefix this panel has written - never let them stack. */
+var CXB_PREFIX_RE = /^(?:[A-Z]\d{3}(?:-[A-Z]\d{3})*_|\d{4,}_)/;
+
+function cxbBaseName(path) {
+  var parts = String(path).split("/");
+  return parts[parts.length - 1];
+}
+
+function cxbStripPrefix(name) {
+  return String(name).replace(CXB_PREFIX_RE, "");
+}
+
+/** Remember the pre-rename filename once, so Undo is exact. */
+function cxbRememberOriginal(file, originalName) {
+  try {
+    var xf = new XMPFile(file.fsName, cxbFormatFor(cxbExtOf(file.fsName)),
+      XMPConst.OPEN_FOR_UPDATE);
+    var xmp = xf.getXMP();
+    if (!xmp.getProperty(CXB_NS, CXB_ORIGINAL_NAME)) {
+      xmp.setProperty(CXB_NS, CXB_ORIGINAL_NAME, originalName);
+      if (xf.canPutXMP(xmp)) xf.putXMP(xmp);
+    }
+    xf.closeFile(XMPConst.CLOSE_UPDATE_SAFELY);
+  } catch (e) {
+    // Not fatal: cxbStripPrefix can still recover the name.
+  }
+}
+
+/** Keep a sidecar's stem matched to its image, or it is orphaned. */
+function cxbRenameSidecar(oldPath, newFileName) {
+  try {
+    var side = new File(cxbSidecarPathFor(oldPath));
+    if (side.exists) side.rename(newFileName.replace(/\.[^.]+$/, "") + ".xmp");
+  } catch (e) {}
+}
+
+/**
+ * Apply a colour-order prefix to each file.
+ * @param {string} jsonPath temp file holding [{filePath, prefix}, ...]
+ */
+function cxbApplyPrefixes(jsonPath) {
+  try {
+    cxbLoadXMP();
+
+    var items = eval("(" + cxbReadFile(jsonPath) + ")");
+    var renamed = 0;
+    var skipped = 0;
+    var failed = [];
+    var renames = {};
+
+    for (var i = 0; i < items.length; i++) {
+      var oldPath = items[i].filePath;
+      try {
+        var file = new File(oldPath);
+        if (!file.exists) { failed.push({ file: oldPath, error: "missing" }); continue; }
+
+        var current = cxbBaseName(file.fsName);
+        var original = cxbStripPrefix(current);
+        var target = items[i].prefix + "_" + original;
+
+        if (current === target) { skipped++; renames[oldPath] = oldPath; continue; }
+
+        cxbRememberOriginal(file, original);
+
+        if (file.rename(target)) {
+          cxbRenameSidecar(oldPath, target);
+          renamed++;
+          renames[oldPath] = file.fsName;
+        } else {
+          failed.push({ file: oldPath, error: "rename refused" });
+        }
+      } catch (e) {
+        failed.push({ file: oldPath, error: String(e.message || e) });
+      }
+    }
+
+    // Filename order is now colour order, so point Bridge at it.
+    try { app.document.sorts = [{ name: "name", reverse: false }]; } catch (eSort) {}
+    try { app.document.refresh(); } catch (eRef) {}
+
+    return cxbJSON({
+      success: true, renamed: renamed, skipped: skipped,
+      failed: failed, renames: renames
+    });
+  } catch (e) {
+    return cxbErr(e, "cxbApplyPrefixes");
+  }
+}
+
+/** Put the original filenames back. */
+function cxbRestoreNames(jsonPath) {
+  try {
+    cxbLoadXMP();
+
+    var paths = eval("(" + cxbReadFile(jsonPath) + ")");
+    var restored = 0;
+    var failed = [];
+    var renames = {};
+
+    for (var i = 0; i < paths.length; i++) {
+      var oldPath = paths[i];
+      try {
+        var file = new File(oldPath);
+        if (!file.exists) continue;
+
+        var current = cxbBaseName(file.fsName);
+        var original = null;
+
+        try {
+          var xf = new XMPFile(file.fsName, cxbFormatFor(cxbExtOf(file.fsName)),
+            XMPConst.OPEN_FOR_READ);
+          var got = xf.getXMP().getProperty(CXB_NS, CXB_ORIGINAL_NAME);
+          if (got) original = String(got);
+          xf.closeFile(0);
+        } catch (eRead) {}
+
+        if (!original) original = cxbStripPrefix(current);
+        if (original === current) { renames[oldPath] = oldPath; continue; }
+
+        if (file.rename(original)) {
+          cxbRenameSidecar(oldPath, original);
+          restored++;
+          renames[oldPath] = file.fsName;
+        } else {
+          failed.push({ file: oldPath, error: "rename refused" });
+        }
+      } catch (e) {
+        failed.push({ file: oldPath, error: String(e.message || e) });
+      }
+    }
+
+    try { app.document.refresh(); } catch (eRef) {}
+    return cxbJSON({
+      success: true, restored: restored, failed: failed, renames: renames
+    });
+  } catch (e) {
+    return cxbErr(e, "cxbRestoreNames");
+  }
+}
+
 /** Ask Bridge to re-read metadata for the given files. */
 function cxbRefresh(jsonPath) {
   try {

@@ -100,19 +100,49 @@ built-in types, and there is no registration entry point for a custom one. An
 earlier draft of this work assumed otherwise; the panel's own diagnostics and
 the Bridge JavaScript Reference both disprove it.
 
-The one built-in field that could have carried a colour was `xmp:Label` — and
-writing to it is **not** worth it. A file has exactly one label, and it belongs
-to your own triage (Select / Approved / Review). Colour is a property of the
-image; a label is a decision you made about it. Overwriting the second with the
-first destroys real work to gain nothing better than lumpy grouping. So
-ColorXBridge does not reorder Bridge's grid at all.
+Two routes are available, and they do different jobs:
 
-What it does instead:
-
-| Route | What you get | Cost |
+| Route | What it does | Cost |
 |---|---|---|
-| **Colour keywords** (default on) | Bridge's **Filter panel** gains a `Colour` group — click *Blue* to narrow the real grid | additive; nothing of yours is touched |
-| **Panel list** | Ordered by hue / saturation / brightness / dominance | none |
+| **Colour keywords** (default on) | Bridge's **Filter panel** gains a `Colour` group — click *Blue* to narrow the grid | additive; nothing of yours is touched |
+| **Number files for Bridge** | Encodes the colour order into a filename prefix, then switches Bridge to *Sort → By Filename*. The real thumbnail grid reorders. | renames files (reversibly) |
+
+**Keywords cannot order.** Bridge filters by keyword but never sorts by one, so
+keywords narrow the grid and leave the survivors in whatever order Bridge was
+already using. Only the filename can carry an arbitrary order.
+
+`xmp:Label` could also carry a colour, but Bridge has just **five label slots**
+and a file has exactly one label — which belongs to your own triage
+(Select / Approved / Review). Overwriting that destroys real work to gain lumpy
+five-bucket grouping, so it is off by default.
+
+### Numbering files
+
+Ticked criteria are applied top to bottom: the first is the primary sort, the
+rest break ties. Each becomes a fixed-width, zero-padded field in the prefix, so
+a plain alphabetical sort — all Bridge can do — reproduces the order exactly.
+
+```
+H000-L050_01-pure-red.png     hue 0,   lightness 50
+H227-L047_11-mixed-blue.png   hue 227, lightness 47
+H227-L051_06-pure-blue.png    same hue, split by lightness
+Z003-L003_09-black.png        Z = achromatic, parked at the end
+```
+
+A descending criterion stores its complement, so ascending text still yields
+descending values. Greys use `Z` for the hue field, which sorts after every
+other letter. Your original filename follows the prefix intact and is also
+written to `colorxbridge:originalName`, so **Undo rename** is exact.
+
+### Which colour represents an image
+
+- **Balanced** (default) — among clusters that are genuinely colourful and
+  occupy a real share of the frame, take the best combination of area and
+  chroma. A 62 % grey wall behind a 22 % red dress reads as *red*, which is what
+  a person would say.
+- **Dominant** — the largest cluster, even if it is a neutral background.
+- **Average** — the mean of the palette. Usually the worst choice: red and green
+  average to a muddy brown that appears nowhere in the picture.
 
 ### Controls
 

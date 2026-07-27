@@ -28,9 +28,16 @@
     activeFilter: null, // { name } - the colour family being shown
     reverse: false,
     busy: false,
+    criteria: {
+      hue:       { on: true,  desc: false },
+      chroma:    { on: false, desc: false },
+      lightness: { on: false, desc: false },
+      dominance: { on: false, desc: true }
+    },
     settings: {
       colorCount: 5,
       sampleSize: 160,
+      representative: 'balanced',
       writeXmp: true,
       writeKeywords: true // additive; drives Bridge's Filter panel
     }
@@ -124,7 +131,9 @@
       return ColorEngine.analyze(file, state.settings)
         .then(function (rec) {
           rec.filePath = file;
-          rec.colorName = ColorNames.nameFor(rec.dominant.hsl);
+          rec.representative =
+            ColorEngine.pickRepresentative(rec.palette, state.settings.representative);
+          rec.colorName = ColorNames.nameFor((rec.representative || rec.dominant).hsl);
           results[file] = rec;
         })
         .catch(function (err) {
@@ -277,42 +286,157 @@
   /** Below this saturation a colour has no meaningful hue. */
   var ACHROMATIC_SATURATION = 10;
 
-  var SORT_KEYS = {
-    // Greys, white and black all report hue 0, which would scatter them
-    // through the reds. Sort them as a separate band at the end, by lightness.
-    hue: {
-      compare: function (a, b) {
-        var aFlat = a.dominant.hsl[1] < ACHROMATIC_SATURATION;
-        var bFlat = b.dominant.hsl[1] < ACHROMATIC_SATURATION;
-        if (aFlat !== bFlat) return aFlat ? 1 : -1;
-        if (aFlat) return a.dominant.hsl[2] - b.dominant.hsl[2];
-        return a.dominant.hsl[0] - b.dominant.hsl[0];
+  /**
+   * The criteria, in the fixed order they are applied. The first ticked one is
+   * the primary sort; later ones break ties.
+   *
+   * `letter` and `width` also define the filename prefix (see buildPrefix).
+   * Every field is the same width and zero-padded so that a plain alphabetical
+   * filename sort — which is all Bridge can do — reproduces this exact order.
+   */
+  var CRITERIA = [
+    { key: 'hue', label: 'hue', letter: 'H', max: 359,
+      get: function (c) { return c.hsl[0]; } },
+    { key: 'chroma', label: 'chroma', letter: 'C', max: 100,
+      get: function (c) { return c.hsl[1]; } },
+    { key: 'lightness', label: 'lightness', letter: 'L', max: 100,
+      get: function (c) { return c.hsl[2]; } },
+    { key: 'dominance', label: 'dominance', letter: 'D', max: 100,
+      get: function (c) { return Math.round(c.dominance * 100); } }
+  ];
+
+  var FIELD_WIDTH = 3;
+
+  /** The colour a record is judged by, honouring the "Colour used" setting. */
+  function repOf(rec) {
+    return rec.representative || rec.dominant;
+  }
+
+  function isAchromatic(colour) {
+    return colour.hsl[1] < ACHROMATIC_SATURATION;
+  }
+
+  function pad(n, width) {
+    var s = String(Math.max(0, Math.round(n)));
+    while (s.length < width) s = '0' + s;
+    return s;
+  }
+
+  function enabledCriteria() {
+    return CRITERIA.filter(function (c) { return state.criteria[c.key].on; });
+  }
+
+  /**
+   * Compare two records across every ticked criterion in order.
+   * Greys have no meaningful hue, so when sorting by hue they form their own
+   * band after the chromatic images, ordered by lightness.
+   */
+  function compareRecords(a, b) {
+    var list = enabledCriteria();
+
+    for (var i = 0; i < list.length; i++) {
+      var c = list[i];
+      var desc = state.criteria[c.key].desc;
+      var ca = repOf(a);
+      var cb = repOf(b);
+      var d;
+
+      if (c.key === 'hue') {
+        var fa = isAchromatic(ca);
+        var fb = isAchromatic(cb);
+        if (fa !== fb) return fa ? 1 : -1;      // greys always last
+        d = fa ? (ca.hsl[2] - cb.hsl[2]) : (ca.hsl[0] - cb.hsl[0]);
+      } else {
+        d = c.get(ca) - c.get(cb);
       }
-    },
-    saturation: { get: function (r) { return r.dominant.hsl[1]; } },
-    brightness: { get: function (r) { return r.dominant.hsl[2]; } },
-    dominance: { get: function (r) { return r.dominant.dominance; }, descending: true }
-  };
+
+      if (d !== 0) return desc ? -d : d;
+    }
+    return 0;
+  }
+
+  /**
+   * The filename prefix that makes an alphabetical sort equal the sort above.
+   *
+   * A descending criterion stores its complement (max - value), so ascending
+   * text order still yields descending values. Greys use the letter Z for the
+   * hue field, which sorts after every other letter and so parks them at the
+   * end exactly as the comparator does.
+   *
+   * Example, hue then lightness:  H007-L043_
+   */
+  function buildPrefix(rec) {
+    var colour = repOf(rec);
+    var parts = [];
+
+    enabledCriteria().forEach(function (c) {
+      var desc = state.criteria[c.key].desc;
+
+      if (c.key === 'hue' && isAchromatic(colour)) {
+        parts.push('Z' + pad(colour.hsl[2], FIELD_WIDTH));
+        return;
+      }
+
+      var v = c.get(colour);
+      if (desc) v = c.max - v;
+      parts.push(c.letter + pad(v, FIELD_WIDTH));
+    });
+
+    return parts.join('-');
+  }
+
+  /** Matches any prefix this panel has ever written, so re-runs never stack. */
+  var PREFIX_RE = /^(?:[A-Z]\d{3}(?:-[A-Z]\d{3})*_|\d{4,}_)/;
+
+  function stripPrefix(name) {
+    return String(name).replace(PREFIX_RE, '');
+  }
 
   function rebuildOrder() {
-    var key = ($('sortSelect') || {}).value || 'hue';
-    var spec = SORT_KEYS[key] || SORT_KEYS.hue;
-    var flip = !!spec.descending !== state.reverse;
-
-    var compare = spec.compare || function (a, b) {
-      return spec.get(a) - spec.get(b);
-    };
-
     // Sort one way, then reverse the finished list. Flipping the comparator
     // instead would leave tied items in their original order, so "reverse"
     // would not be an exact mirror.
     var ordered = Object.keys(state.results).sort(function (aKey, bKey) {
-      var d = compare(state.results[aKey], state.results[bKey]);
+      var d = compareRecords(state.results[aKey], state.results[bKey]);
       if (d !== 0) return d;
       return aKey < bKey ? -1 : (aKey > bKey ? 1 : 0); // stable on filename
     });
 
-    state.order = flip ? ordered.reverse() : ordered;
+    state.order = state.reverse ? ordered.reverse() : ordered;
+  }
+
+  function describeSort() {
+    var list = enabledCriteria();
+    if (list.length === 0) return 'nothing ticked';
+    return list.map(function (c) {
+      return c.label + (state.criteria[c.key].desc ? ' ▼' : ' ▲');
+    }).join(' → ');
+  }
+
+  /** Re-sort after a checkbox or direction change, without shouting about it. */
+  function applySortQuietly() {
+    if (Object.keys(state.results).length === 0 || enabledCriteria().length === 0) {
+      updateRenamePreview();
+      return;
+    }
+    rebuildOrder();
+    renderResults();
+    updateRenamePreview();
+  }
+
+  /** The "Colour used" setting changed, so every record needs re-judging. */
+  function recomputeRepresentatives() {
+    Object.keys(state.results).forEach(function (f) {
+      var rec = state.results[f];
+      rec.representative =
+        ColorEngine.pickRepresentative(rec.palette, state.settings.representative);
+      rec.colorName = ColorNames.nameFor(repOf(rec).hsl);
+    });
+    rebuildOrder();
+    renderSwatches();
+    renderResults();
+    updateRenamePreview();
+    setStatus('Using ' + state.settings.representative + ' colour', 'ok');
   }
 
   function applySort() {
@@ -320,12 +444,141 @@
       setStatus('Nothing to sort yet — analyse some images first.');
       return;
     }
+    if (enabledCriteria().length === 0) {
+      setStatus('Tick at least one criterion.', 'error');
+      return;
+    }
     rebuildOrder();
     renderResults();
+    updateRenamePreview();
+    setStatus('Sorted by ' + describeSort(), 'ok');
+  }
 
-    var key = ($('sortSelect') || {}).value || 'hue';
-    setStatus('Sorted by ' + key + (state.reverse ? ' (reversed)' : '') +
-      ' — click a row to select it in Bridge', 'ok');
+  //= ==========================================================================
+  // Numbering files so Bridge's own grid follows the colour order
+  //= ==========================================================================
+
+  /** Show what the next rename would do, without touching anything. */
+  function updateRenamePreview() {
+    var box = $('renamePreview');
+    if (!box) return;
+
+    var shown = state.order.filter(function (f) { return passesFilter(state.results[f]); });
+    if (shown.length === 0 || enabledCriteria().length === 0) {
+      box.textContent = '';
+      return;
+    }
+
+    var first = shown[0];
+    var name = stripPrefix(baseName(first));
+    box.textContent = 'Prefix example:  ' + buildPrefix(state.results[first]) + '_' + name +
+      '   (' + shown.length + ' files, sorted by ' + describeSort() + ')';
+  }
+
+  /**
+   * Rename files so an alphabetical sort in Bridge equals the colour order.
+   *
+   * Bridge's Sort menu is a fixed enum with no way to add a criterion, and its
+   * manual order cannot be set from a script. Filename is the only ordering
+   * Bridge exposes that can be made to carry arbitrary data, so the colour
+   * order is encoded into a prefix and Bridge is switched to Sort > By Filename.
+   *
+   * The original name is preserved intact after the prefix, and stored in XMP,
+   * so Undo is exact.
+   */
+  function renameForBridge() {
+    var shown = state.order.filter(function (f) { return passesFilter(state.results[f]); });
+    if (shown.length === 0) {
+      setStatus('Nothing to number — analyse some images first.');
+      return;
+    }
+    if (enabledCriteria().length === 0) {
+      setStatus('Tick at least one criterion first.', 'error');
+      return;
+    }
+
+    var items = shown.map(function (f) {
+      return { filePath: f, prefix: buildPrefix(state.results[f]) };
+    });
+
+    var sample = items[0];
+    if (!window.confirm(
+      'Rename ' + items.length + ' file(s) so Bridge can show them in colour order?\n\n' +
+      'Sorted by: ' + describeSort() + '\n\n' +
+      '    ' + baseName(sample.filePath) + '\n' +
+      ' →  ' + sample.prefix + '_' + stripPrefix(baseName(sample.filePath)) + '\n\n' +
+      'Your original filename is kept after the prefix and saved in the file, ' +
+      'so Undo restores it exactly. Pixels are not touched.')) return;
+
+    var payload;
+    try {
+      payload = writeTempJson('rename.json', items);
+    } catch (e) {
+      setStatus(e.message, 'error');
+      return;
+    }
+
+    setStatus('Renaming ' + items.length + ' file(s)…');
+    evalScript('cxbApplyPrefixes("' + esc(payload) + '")')
+      .then(function (reply) {
+        if (!reply.success) throw new Error(reply.error || 'rename failed');
+
+        var msg = reply.renamed + ' renamed';
+        if (reply.skipped) msg += ', ' + reply.skipped + ' already correct';
+        if (reply.failed && reply.failed.length) msg += ', ' + reply.failed.length + ' failed';
+        setStatus(msg + '. Bridge is now sorting by filename.', 'ok');
+
+        rekeyAfterRename(items, reply.renames || {});
+      })
+      .catch(function (e) { setStatus(e.message, 'error'); });
+  }
+
+  /** Restore the original filenames. */
+  function undoRename() {
+    var all = Object.keys(state.results);
+    if (all.length === 0) {
+      setStatus('Nothing to undo.');
+      return;
+    }
+    if (!window.confirm('Restore the original filenames for ' + all.length + ' file(s)?')) return;
+
+    var payload;
+    try {
+      payload = writeTempJson('undo.json', all);
+    } catch (e) {
+      setStatus(e.message, 'error');
+      return;
+    }
+
+    setStatus('Restoring filenames…');
+    evalScript('cxbRestoreNames("' + esc(payload) + '")')
+      .then(function (reply) {
+        if (!reply.success) throw new Error(reply.error || 'restore failed');
+        setStatus(reply.restored + ' filename(s) restored', 'ok');
+        rekeyAfterRename(all.map(function (f) { return { filePath: f }; }), reply.renames || {});
+      })
+      .catch(function (e) { setStatus(e.message, 'error'); });
+  }
+
+  /**
+   * Results are keyed by path, and renaming invalidates those keys. Re-key from
+   * the map Bridge returned so the list, filters and Undo keep working without
+   * a re-analysis.
+   */
+  function rekeyAfterRename(items, renames) {
+    var moved = {};
+
+    Object.keys(state.results).forEach(function (oldPath) {
+      var rec = state.results[oldPath];
+      var newPath = renames[oldPath] || oldPath;
+      rec.filePath = newPath;
+      moved[newPath] = rec;
+    });
+
+    state.results = moved;
+    rebuildOrder();
+    renderResults();
+    updateRenamePreview();
   }
 
   /**
@@ -560,6 +813,45 @@
 
     var sortBtn = $('sortBtn');
     if (sortBtn) sortBtn.addEventListener('click', applySort);
+
+    var renameBtn = $('renameBtn');
+    if (renameBtn) renameBtn.addEventListener('click', renameForBridge);
+
+    var undoBtn = $('undoRenameBtn');
+    if (undoBtn) undoBtn.addEventListener('click', undoRename);
+
+    // Criterion checkboxes and their direction toggles.
+    Array.prototype.forEach.call(
+      document.querySelectorAll('[data-criterion]'), function (box) {
+        var key = box.getAttribute('data-criterion');
+        box.checked = state.criteria[key].on;
+        box.addEventListener('change', function () {
+          state.criteria[key].on = box.checked;
+          applySortQuietly();
+        });
+      });
+
+    Array.prototype.forEach.call(
+      document.querySelectorAll('[data-dir]'), function (btn) {
+        var key = btn.getAttribute('data-dir');
+        btn.textContent = state.criteria[key].desc ? '\u25BC' : '\u25B2';
+        btn.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();           // the button sits inside a <label>
+          state.criteria[key].desc = !state.criteria[key].desc;
+          btn.textContent = state.criteria[key].desc ? '\u25BC' : '\u25B2';
+          applySortQuietly();
+        });
+      });
+
+    var repSelect = $('representativeSelect');
+    if (repSelect) {
+      repSelect.value = state.settings.representative;
+      repSelect.addEventListener('change', function () {
+        state.settings.representative = repSelect.value;
+        recomputeRepresentatives();
+      });
+    }
 
     var reverseBtn = $('reverseBtn');
     if (reverseBtn) {
