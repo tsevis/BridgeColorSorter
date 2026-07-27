@@ -44,7 +44,6 @@ rather than a silent success.
 | Path | What it is |
 |------|-----------|
 | `Bridge-Extension/` | The CEP panel that runs **inside** Adobe Bridge |
-| `macOS-App/` | Standalone Electron app, for working without Bridge |
 | `Bridge-Extension/_legacy/` | Superseded source, kept for reference |
 
 ---
@@ -156,20 +155,6 @@ End to end inside Adobe Bridge 2026, driven through the panel's own button:
   `dc:subject=[Colour: Red]`, `[Colour: Green]`, `[Colour: Magenta]` — which is
   the data the Filter panel indexes.
 - The PNGs remain valid images after the XMP is embedded.
-
----
-
-## Standalone macOS app
-
-```bash
-cd macOS-App
-npm install
-npm start
-```
-
-It shares the same clustering engine as the panel (`npm run sync-engine` copies
-it into `src/vendor/`), decodes with `sharp`, and writes the same `.xmp`
-sidecars — so both surfaces agree on an image's colour.
 
 ---
 
