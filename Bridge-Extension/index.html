@@ -54,13 +54,11 @@
       </div>
 
       <div class="row">
-        <label class="inline">Hue bands
-          <select id="hueBandSelect" class="select">
-            <option value="0">Continuous (finest)</option>
-            <option value="36">36 bands</option>
-            <option value="24">24 bands</option>
-            <option value="12">12 bands</option>
-            <option value="8">8 bands</option>
+        <label class="inline">Grouping
+          <select id="groupingSelect" class="select">
+            <option value="fine">Fine</option>
+            <option value="medium">Medium (recommended)</option>
+            <option value="coarse">Coarse</option>
           </select>
         </label>
       </div>
@@ -72,6 +70,13 @@
             <option value="dominant">Dominant only</option>
             <option value="average">Average</option>
           </select>
+        </label>
+      </div>
+
+      <div class="row">
+        <label class="criterion" style="flex:1">
+          <input type="checkbox" id="serpentineToggle" checked>
+          <span class="criterion-name">Smooth transitions between groups</span>
         </label>
       </div>
 

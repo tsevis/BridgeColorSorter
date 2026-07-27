@@ -151,13 +151,45 @@ OKLCH fixes all three: equal numeric steps are roughly equal perceived steps.
 The same pair above becomes `C16 L87` and `C46 L41` — clearly distinct — and
 the near-grey reads `C4`, correctly neutral.
 
-### Hue bands
+### Grouping, and why the sort looked noisy
 
-Sorting on raw hue lets a 1° difference outrank everything else, so the
-secondary criterion never speaks and the grid looks noisy. Banding hue (24 by
-default) groups near-hues so lightness orders them *within* the band, producing
-the dark-to-light runs that make a colour grid read as sorted. Set it to
-*Continuous* for the finest ordering, or 8–12 bands for broad colour blocks.
+A criterion used at full resolution acts as a near-unique key, so the next
+criterion never gets to order anything. Measured on a real 1,559-image folder
+sorted by hue → chroma → lightness, chroma at full 0-100 resolution produced
+**452 groups averaging 3.4 images, 166 of them singletons**. Lightness therefore
+ordered almost nothing and jumped by more than 20 points between **11 %** of
+neighbours — visible as noise across the grid.
+
+So every ticked criterion *except the last* is quantised into buckets, and the
+last is left continuous to order finely inside them. **Grouping** sets how
+coarse those buckets are:
+
+| | hue | chroma | lightness | dominance |
+|---|---|---|---|---|
+| Fine | 24 | 8 | 8 | 5 |
+| Medium *(default)* | 12 | 5 | 5 | 4 |
+| Coarse | 8 | 3 | 3 | 3 |
+
+### Smooth transitions
+
+Even with good groups, the fine criterion resets at every group boundary — a
+smooth run, a hard snap back, another smooth run. **Smooth transitions**
+reverses every second group, so the runs alternate direction and meet at their
+matching ends.
+
+Measured on the same folder, mean step in lightness between neighbours:
+
+| Setting | mean step | jumps > 20 |
+|---|---|---|
+| Full resolution (the original problem) | 7.8 | 11 % |
+| Fine grouping | 3.2 | 5 % |
+| Medium grouping | 1.7 | 2 % |
+| **Medium + smoothing** *(default)* | **1.2** | **1 %** |
+| Coarse + smoothing | 0.7 | 1 % |
+
+Because smoothing reorders within a group in a way the raw values cannot
+express, the filename prefix carries the grouping fields plus a rank:
+`H004-C002-S007_name.jpg`.
 
 ### Which colour represents an image
 

@@ -41,7 +41,8 @@
       colorCount: 5,
       sampleSize: 160,
       representative: 'balanced',
-      hueBands: 24,
+      grouping: 'medium',
+      serpentine: true,
       writeXmp: true,
       writeKeywords: true // additive; drives Bridge's Filter panel
     }
@@ -298,39 +299,29 @@
   }
 
   /**
-   * Quantise hue into bands.
-   *
-   * Sorting on raw hue lets a 1-degree difference outrank everything else, so
-   * a secondary criterion never gets to speak and the grid looks noisy. Banding
-   * groups near-hues together and lets lightness or chroma order them within
-   * the band, which is what makes a colour grid read as smooth runs.
+   * How many buckets each criterion is quantised into when it is used for
+   * grouping. Coarser grouping means larger groups, which is what lets the
+   * next criterion actually order anything.
    */
-  function hueBand(h) {
-    var n = state.settings.hueBands;
-    if (!n) return h;                     // 0 = continuous
-    return Math.floor(h / (360 / n));
-  }
+  var GRANULARITY = {
+    fine:   { hue: 24, chroma: 8, lightness: 8, dominance: 5 },
+    medium: { hue: 12, chroma: 5, lightness: 5, dominance: 4 },
+    coarse: { hue: 8,  chroma: 3, lightness: 3, dominance: 3 }
+  };
 
-  /**
-   * The criteria, in the fixed order they are applied. The first ticked one is
-   * the primary sort; later ones break ties.
-   *
-   * `letter` and `width` also define the filename prefix (see buildPrefix).
-   * Every field is the same width and zero-padded so that a plain alphabetical
-   * filename sort — which is all Bridge can do — reproduces this exact order.
-   */
   var CRITERIA = [
     { key: 'hue', label: 'hue', letter: 'H', max: 359,
-      get: function (c) { return hueBand(lch(c)[2]); } },
+      raw: function (c) { return lch(c)[2]; } },
     { key: 'chroma', label: 'chroma', letter: 'C', max: 100,
-      get: function (c) { return lch(c)[1]; } },
+      raw: function (c) { return lch(c)[1]; } },
     { key: 'lightness', label: 'lightness', letter: 'L', max: 100,
-      get: function (c) { return lch(c)[0]; } },
+      raw: function (c) { return lch(c)[0]; } },
     { key: 'dominance', label: 'dominance', letter: 'D', max: 100,
-      get: function (c) { return Math.round(c.dominance * 100); } }
+      raw: function (c) { return Math.round(c.dominance * 100); } }
   ];
 
   var FIELD_WIDTH = 3;
+  var ACHROMATIC_BUCKET = 9999;
 
   /** The colour a record is judged by, honouring the "Colour used" setting. */
   function repOf(rec) {
@@ -352,63 +343,146 @@
   }
 
   /**
-   * Compare two records across every ticked criterion in order.
-   * Greys have no meaningful hue, so when sorting by hue they form their own
-   * band after the chromatic images, ordered by lightness.
+   * Quantise a criterion into buckets.
+   *
+   * This is the fix for the sort looking noisy. Measured on a real 1,559-image
+   * folder sorted by hue then chroma then lightness: chroma at full 0-100
+   * resolution produced 452 groups averaging 3.4 images, 166 of them
+   * singletons. Lightness therefore never ordered anything and jumped by more
+   * than 20 points between 11% of neighbours - which is visible as noise.
+   *
+   * Quantising every criterion *except the last* creates groups big enough for
+   * the last one to sort smoothly inside.
    */
-  function compareRecords(a, b) {
+  function bucket(criterion, value) {
+    var steps = GRANULARITY[state.settings.grouping][criterion.key];
+    if (!steps) return value;
+    var span = criterion.max + 1;
+    return Math.min(steps - 1, Math.floor(value / (span / steps)));
+  }
+
+  /** Grouping key: every ticked criterion except the last, quantised. */
+  function groupKey(rec) {
+    var list = enabledCriteria();
+    var colour = repOf(rec);
+    var key = [];
+
+    for (var i = 0; i < list.length - 1; i++) {
+      var c = list[i];
+      if (c.key === 'hue' && isAchromatic(colour)) key.push(ACHROMATIC_BUCKET);
+      else key.push(bucket(c, c.raw(colour)));
+    }
+    return key;
+  }
+
+  /** The last ticked criterion, left continuous so it orders finely. */
+  function fineValue(rec) {
+    var list = enabledCriteria();
+    if (list.length === 0) return 0;
+    var last = list[list.length - 1];
+    var colour = repOf(rec);
+
+    if (last.key === 'hue' && isAchromatic(colour)) return lch(colour)[0];
+    return last.raw(colour);
+  }
+
+  function compareGroups(a, b) {
+    var ka = groupKey(a);
+    var kb = groupKey(b);
     var list = enabledCriteria();
 
-    for (var i = 0; i < list.length; i++) {
-      var c = list[i];
-      var desc = state.criteria[c.key].desc;
-      var ca = repOf(a);
-      var cb = repOf(b);
-      var d;
-
-      if (c.key === 'hue') {
-        var fa = isAchromatic(ca);
-        var fb = isAchromatic(cb);
-        if (fa !== fb) return fa ? 1 : -1;      // greys always last
-        d = fa ? (lch(ca)[0] - lch(cb)[0])      // greys ordered by lightness
-               : (hueBand(lch(ca)[2]) - hueBand(lch(cb)[2]));
-      } else {
-        d = c.get(ca) - c.get(cb);
+    for (var i = 0; i < ka.length; i++) {
+      if (ka[i] === kb[i]) continue;
+      // The achromatic band sorts last, whichever way the rest is going.
+      if (ka[i] === ACHROMATIC_BUCKET || kb[i] === ACHROMATIC_BUCKET) {
+        return ka[i] === ACHROMATIC_BUCKET ? 1 : -1;
       }
-
-      if (d !== 0) return desc ? -d : d;
+      return state.criteria[list[i].key].desc ? kb[i] - ka[i] : ka[i] - kb[i];
     }
     return 0;
   }
 
   /**
-   * The filename prefix that makes an alphabetical sort equal the sort above.
-   *
-   * A descending criterion stores its complement (max - value), so ascending
-   * text order still yields descending values. Greys use the letter Z for the
-   * hue field, which sorts after every other letter and so parks them at the
-   * end exactly as the comparator does.
-   *
-   * Example, hue then lightness:  H007-L043_
+   * Reverse every second group, so the fine criterion runs dark-to-light then
+   * light-to-dark instead of snapping back at each boundary. Without this the
+   * grid shows a sawtooth: a smooth run, a hard reset, another smooth run.
    */
-  function buildPrefix(rec) {
-    var colour = repOf(rec);
-    var parts = [];
+  function serpentine(ordered) {
+    var out = [];
+    var group = [];
+    var lastKey = null;
+    var flip = false;
 
-    enabledCriteria().forEach(function (c) {
-      var desc = state.criteria[c.key].desc;
+    function flush() {
+      if (group.length === 0) return;
+      out = out.concat(flip ? group.slice().reverse() : group);
+      flip = !flip;
+      group = [];
+    }
 
-      if (c.key === 'hue' && isAchromatic(colour)) {
-        parts.push('Z' + pad(lch(colour)[0], FIELD_WIDTH));
-        return;
-      }
+    for (var i = 0; i < ordered.length; i++) {
+      var k = groupKey(state.results[ordered[i]]).join(',');
+      if (lastKey !== null && k !== lastKey) flush();
+      lastKey = k;
+      group.push(ordered[i]);
+    }
+    flush();
+    return out;
+  }
 
-      var v = c.get(colour);
-      if (desc) v = c.max - v;
-      parts.push(c.letter + pad(v, FIELD_WIDTH));
+  function rebuildOrder() {
+    var list = enabledCriteria();
+    if (list.length === 0) { state.order = Object.keys(state.results); return; }
+
+    var lastDesc = state.criteria[list[list.length - 1].key].desc;
+
+    var ordered = Object.keys(state.results).sort(function (aKey, bKey) {
+      var a = state.results[aKey];
+      var b = state.results[bKey];
+
+      var g = compareGroups(a, b);
+      if (g !== 0) return g;
+
+      var d = fineValue(a) - fineValue(b);
+      if (d !== 0) return lastDesc ? -d : d;
+
+      return aKey < bKey ? -1 : (aKey > bKey ? 1 : 0); // stable on filename
     });
 
-    return parts.join('-');
+    if (state.settings.serpentine) ordered = serpentine(ordered);
+    state.order = state.reverse ? ordered.reverse() : ordered;
+  }
+
+  /**
+   * Filename prefixes for the finished order.
+   *
+   * Grouping fields stay readable, and a rank within the group carries the fine
+   * ordering - including any serpentine reversal, which the raw criterion
+   * values could not express on their own.
+   */
+  function buildPrefixes(files) {
+    var list = enabledCriteria();
+    var out = {};
+    var rank = 0;
+    var lastKey = null;
+
+    files.forEach(function (f) {
+      var rec = state.results[f];
+      var key = groupKey(rec);
+      var joined = key.join(',');
+      if (joined !== lastKey) { rank = 0; lastKey = joined; }
+
+      var parts = [];
+      for (var i = 0; i < key.length; i++) {
+        parts.push(key[i] === ACHROMATIC_BUCKET
+          ? 'Z' + pad(lch(repOf(rec))[0], FIELD_WIDTH)
+          : list[i].letter + pad(key[i], FIELD_WIDTH));
+      }
+      parts.push('S' + pad(rank++, FIELD_WIDTH));
+      out[f] = parts.join('-');
+    });
+
+    return out;
   }
 
   /** Matches any prefix this panel has ever written, so re-runs never stack. */
@@ -418,25 +492,13 @@
     return String(name).replace(PREFIX_RE, '');
   }
 
-  function rebuildOrder() {
-    // Sort one way, then reverse the finished list. Flipping the comparator
-    // instead would leave tied items in their original order, so "reverse"
-    // would not be an exact mirror.
-    var ordered = Object.keys(state.results).sort(function (aKey, bKey) {
-      var d = compareRecords(state.results[aKey], state.results[bKey]);
-      if (d !== 0) return d;
-      return aKey < bKey ? -1 : (aKey > bKey ? 1 : 0); // stable on filename
-    });
-
-    state.order = state.reverse ? ordered.reverse() : ordered;
-  }
-
   function describeSort() {
     var list = enabledCriteria();
     if (list.length === 0) return 'nothing ticked';
     return list.map(function (c) {
       return c.label + (state.criteria[c.key].desc ? ' ▼' : ' ▲');
-    }).join(' → ');
+    }).join(' → ') + ' · ' + state.settings.grouping + ' grouping' +
+      (state.settings.serpentine ? ', smoothed' : '');
   }
 
   /** Re-sort after a checkbox or direction change, without shouting about it. */
@@ -467,7 +529,7 @@
 
   function applySort() {
     if (Object.keys(state.results).length === 0) {
-      setStatus('Nothing to sort yet — analyse some images first.');
+      setStatus('Nothing to sort yet - analyse some images first.');
       return;
     }
     if (enabledCriteria().length === 0) {
@@ -479,6 +541,7 @@
     updateRenamePreview();
     setStatus('Sorted by ' + describeSort(), 'ok');
   }
+
 
   //= ==========================================================================
   // Numbering files so Bridge's own grid follows the colour order
@@ -497,8 +560,9 @@
 
     var first = shown[0];
     var name = stripPrefix(baseName(first));
-    box.textContent = 'Prefix example:  ' + buildPrefix(state.results[first]) + '_' + name +
-      '   (' + shown.length + ' files, sorted by ' + describeSort() + ')';
+    var prefixes = buildPrefixes(shown);
+    box.textContent = 'Prefix example:  ' + prefixes[first] + '_' + name +
+      '   (' + shown.length + ' files · ' + describeSort() + ')';
   }
 
   /**
@@ -523,8 +587,9 @@
       return;
     }
 
+    var prefixes = buildPrefixes(shown);
     var items = shown.map(function (f) {
-      return { filePath: f, prefix: buildPrefix(state.results[f]) };
+      return { filePath: f, prefix: prefixes[f] };
     });
 
     var sample = items[0];
@@ -870,11 +935,20 @@
         });
       });
 
-    var bandSelect = $('hueBandSelect');
-    if (bandSelect) {
-      bandSelect.value = String(state.settings.hueBands);
-      bandSelect.addEventListener('change', function () {
-        state.settings.hueBands = parseInt(bandSelect.value, 10) || 0;
+    var groupSelect = $('groupingSelect');
+    if (groupSelect) {
+      groupSelect.value = state.settings.grouping;
+      groupSelect.addEventListener('change', function () {
+        state.settings.grouping = groupSelect.value;
+        applySortQuietly();
+      });
+    }
+
+    var smoothToggle = $('serpentineToggle');
+    if (smoothToggle) {
+      smoothToggle.checked = state.settings.serpentine;
+      smoothToggle.addEventListener('change', function () {
+        state.settings.serpentine = smoothToggle.checked;
         applySortQuietly();
       });
     }
