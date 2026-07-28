@@ -147,19 +147,35 @@ function cxbThumbPath(thumb) {
   return null;
 }
 
-/** Absolute paths of the images currently selected in Bridge. */
+/**
+ * Absolute paths of the images currently selected in Bridge.
+ *
+ * Counts what it discards. A thumbnail whose path cannot be read looks exactly
+ * like nothing being selected once it has been filtered out, and the panel
+ * would then tell the user to "select some images first" while they are
+ * staring at a full selection.
+ */
 function cxbGetSelection() {
   try {
-    if (!app.document) return cxbJSON({ success: true, files: [] });
+    if (!app.document) return cxbJSON({ success: true, files: [], noDocument: true });
 
     var sel = app.document.selections;
     var files = [];
+    var unreadable = 0;
+    var notImages = 0;
 
-    for (var i = 0; i < sel.length; i++) {
+    // Length is read once: these are live Bridge collections, so re-reading it
+    // every iteration asks Bridge for the count 1,559 times.
+    for (var i = 0, n = sel.length; i < n; i++) {
       var p = cxbThumbPath(sel[i]);
-      if (p && CXB_IMAGE_EXTS[cxbExtOf(p)]) files.push(p);
+      if (!p) { unreadable++; continue; }
+      if (!CXB_IMAGE_EXTS[cxbExtOf(p)]) { notImages++; continue; }
+      files.push(p);
     }
-    return cxbJSON({ success: true, files: files });
+    return cxbJSON({
+      success: true, files: files, selected: sel.length,
+      unreadable: unreadable, notImages: notImages
+    });
   } catch (e) {
     return cxbErr(e, "cxbGetSelection");
   }
@@ -175,12 +191,19 @@ function cxbGetFolderImages() {
 
     var kids = container.children;
     var files = [];
+    var unreadable = 0;
+    var notImages = 0;
 
-    for (var i = 0; i < kids.length; i++) {
+    for (var i = 0, n = kids.length; i < n; i++) {
       var p = cxbThumbPath(kids[i]);
-      if (p && CXB_IMAGE_EXTS[cxbExtOf(p)]) files.push(p);
+      if (!p) { unreadable++; continue; }
+      if (!CXB_IMAGE_EXTS[cxbExtOf(p)]) { notImages++; continue; }
+      files.push(p);
     }
-    return cxbJSON({ success: true, files: files, folder: container.name });
+    return cxbJSON({
+      success: true, files: files, folder: container.name,
+      children: kids.length, unreadable: unreadable, notImages: notImages
+    });
   } catch (e) {
     return cxbErr(e, "cxbGetFolderImages");
   }
@@ -363,6 +386,7 @@ function cxbWriteOne(rec, opts) {
  */
 function cxbApplyResults(jsonPath) {
   try {
+    var started = new Date().getTime();
     cxbLoadXMP();
 
     var payload = eval("(" + cxbReadFile(jsonPath) + ")");
@@ -374,20 +398,36 @@ function cxbApplyResults(jsonPath) {
 
     var written = [];
     var failed = [];
+    var embedded = 0;
+    var sidecar = 0;
+    var embedError = null;
 
     for (var i = 0; i < records.length; i++) {
       try {
-        written.push(cxbWriteOne(records[i], opts));
+        var outcome = cxbWriteOne(records[i], opts);
+        written.push(outcome);
+        if (outcome.mode === "embedded") {
+          embedded++;
+        } else {
+          sidecar++;
+          if (!embedError && outcome.embedError) embedError = outcome.embedError;
+        }
       } catch (e) {
         failed.push({ file: records[i].filePath, error: String(e) });
       }
     }
 
+    // Summarised here rather than shipped back per file: `modes` was an array
+    // of 1,559 objects, each carrying a full path, serialised through
+    // evalScript's single return string only for the panel to count them.
     return cxbJSON({
       success: true,
       written: written.length,
+      embedded: embedded,
+      sidecar: sidecar,
+      embedError: embedError,
       failed: failed,
-      modes: written
+      elapsedMs: new Date().getTime() - started
     });
   } catch (e) {
     return cxbErr(e, "cxbApplyResults");
@@ -409,6 +449,7 @@ function cxbApplyResults(jsonPath) {
  */
 function cxbReadColorBatch(jsonPath) {
   try {
+    var started = new Date().getTime();
     cxbLoadXMP();
 
     var paths = eval("(" + cxbReadFile(jsonPath) + ")");
@@ -445,48 +486,12 @@ function cxbReadColorBatch(jsonPath) {
       if (got) { data[p] = got; hits++; } else { misses++; }
     }
 
-    return cxbJSON({ success: true, data: data, hits: hits, misses: misses });
+    return cxbJSON({
+      success: true, data: data, hits: hits, misses: misses,
+      elapsedMs: new Date().getTime() - started
+    });
   } catch (e) {
     return cxbErr(e, "cxbReadColorBatch");
-  }
-}
-
-/** Read previously stored colour data for one file. */
-function cxbReadColor(filePath) {
-  try {
-    cxbLoadXMP();
-
-    var read = function (xmp) {
-      var hex = xmp.getProperty(CXB_NS, "dominantHex");
-      if (!hex) return null;
-      return {
-        hex: String(hex),
-        hue: Number(xmp.getProperty(CXB_NS, "dominantHue")) || 0,
-        saturation: Number(xmp.getProperty(CXB_NS, "dominantSaturation")) || 0,
-        lightness: Number(xmp.getProperty(CXB_NS, "dominantLightness")) || 0,
-        dominance: Number(xmp.getProperty(CXB_NS, "dominance")) || 0,
-        palette: String(xmp.getProperty(CXB_NS, "palette") || "")
-      };
-    };
-
-    try {
-      var xf = new XMPFile(filePath, cxbFormatFor(cxbExtOf(filePath)),
-        XMPConst.OPEN_FOR_READ);
-      var got = read(xf.getXMP());
-      xf.closeFile(0);
-      if (got) return cxbJSON({ success: true, source: "embedded", data: got });
-    } catch (e1) {}
-
-    var side = new File(cxbSidecarPathFor(filePath));
-    if (side.exists) {
-      var meta = new XMPMeta(cxbReadFile(side.fsName));
-      var got2 = read(meta);
-      if (got2) return cxbJSON({ success: true, source: "sidecar", data: got2 });
-    }
-
-    return cxbJSON({ success: true, data: null });
-  } catch (e) {
-    return cxbErr(e, "cxbReadColor");
   }
 }
 
@@ -515,33 +520,45 @@ function cxbReadColor(filePath) {
  */
 function cxbRevealFile(filePath) {
   try {
+    if (!app.document) {
+      return cxbJSON({ success: false, error: "Bridge has no folder open" });
+    }
+
     var file = new File(filePath);
     if (!file.exists) return cxbJSON({ success: false, error: "file not found" });
 
-    var thumb = new Thumbnail(file);
-    var how = null;
+    // Prefer the folder's own thumbnail. Constructing one makes Bridge build a
+    // fresh thumbnail record, which is only worth doing when the file is not
+    // in the folder Bridge is currently showing.
+    var thumb = null;
+    var via = "folder child";
+    var kids = app.document.thumbnail.children;
+    for (var i = 0, n = kids.length; i < n; i++) {
+      if (cxbThumbPath(kids[i]) === file.fsName) { thumb = kids[i]; break; }
+    }
+    if (!thumb) { thumb = new Thumbnail(file); via = "constructed"; }
 
-    // document.select() ADDS to the selection, so clear it first or every
-    // click accumulates until the whole folder is selected.
-    try { app.document.deselectAll(); } catch (eDeselect) {
-      try { app.document.selections = []; } catch (eEmpty) {}
+    // select() ADDS to the selection, so clear it first or every click
+    // accumulates until the whole folder is selected.
+    try { app.document.deselectAll(); } catch (eDeselect) {}
+
+    // The only mechanism that works. Assigning app.document.selections is
+    // silently ignored by Bridge - it neither throws nor selects - so the old
+    // cascade of fallbacks could only ever report a success it had not had.
+    try {
+      app.document.select(thumb);
+    } catch (eSelect) {
+      return cxbJSON({ success: false, error: String(eSelect.message || eSelect) });
     }
 
-    // Builds differ in which of these they expose.
-    if (!how) {
-      try { app.document.select(thumb); how = "document.select"; } catch (e) {}
+    var verified = -1;
+    try { verified = app.document.selections.length; } catch (eRead) {}
+    if (verified === 0) {
+      return cxbJSON({ success: false, error: "Bridge did not take the selection" });
     }
-    if (!how) {
-      try { app.document.selections = [thumb]; how = "document.selections"; } catch (e2) {}
-    }
-    if (!how) {
-      try { app.document.thumbnail = thumb; how = "document.thumbnail"; } catch (e3) {}
-    }
-
-    if (!how) return cxbJSON({ success: false, error: "no way to select a thumbnail" });
 
     try { app.bringToFront(); } catch (e4) {}
-    return cxbJSON({ success: true, via: how, name: thumb.name });
+    return cxbJSON({ success: true, via: via, name: thumb.name, verified: verified });
   } catch (e) {
     return cxbErr(e, "cxbRevealFile");
   }
@@ -549,61 +566,107 @@ function cxbRevealFile(filePath) {
 
 /**
  * Select many files at once in Bridge's content pane.
- * @param {string} jsonPath temp file holding an array of absolute paths
+ *
+ * Two things were established by measurement on a 1,559-image folder, and both
+ * contradict what the code used to assume:
+ *
+ *  - `app.document.selections = [...]` DOES NOTHING. It does not throw, it
+ *    does not select, and the selection stays exactly as it was. Assigning
+ *    three known children left the count at zero. Any code that assigns it and
+ *    reports success is reporting a success that never happened.
+ *  - `app.document.select(thumb)` is the only mechanism that works, and it is
+ *    not what crashed Bridge. Driving it 1,559 times over the document's own
+ *    child thumbnails takes 3.6 s and Bridge survives comfortably
+ *    (100 -> 151 ms, 600 -> 993 ms, 1,000 -> 1.9 s, 1,559 -> 3.6 s).
+ *
+ * What actually crashed was `new Thumbnail(new File(path))` once per file:
+ * each construction makes Bridge build a whole thumbnail record. So no
+ * Thumbnail is constructed here at all. The document's existing children are
+ * indexed by path and reused, which is both safe and free.
+ *
+ * The count is read back from Bridge afterwards and returned separately from
+ * the count we asked for, so the caller can tell the difference between doing
+ * the work and believing it did.
+ *
+ * @param {string} jsonPath temp file holding {paths: [...], limit: n}
  */
 function cxbSelectFiles(jsonPath) {
   try {
+    if (!app.document) {
+      return cxbJSON({ success: false, error: "Bridge has no folder open" });
+    }
+
     var payload = eval("(" + cxbReadFile(jsonPath) + ")");
     var paths = payload instanceof Array ? payload : payload.paths;
     var limit = (payload instanceof Array ? 0 : payload.limit) || 0;
 
-    // Selecting one thumbnail at a time crashed Bridge outright at 1,559 files:
-    // every call constructs a Thumbnail and forces the content pane to update.
-    // Build the whole list first and hand it over in a single assignment.
-    var thumbs = [];
-    var missing = 0;
-
-    for (var i = 0; i < paths.length; i++) {
-      if (limit && thumbs.length >= limit) break;
-      try {
-        var f = new File(paths[i]);
-        if (!f.exists) { missing++; continue; }
-        thumbs.push(new Thumbnail(f));
-      } catch (eMake) {
-        missing++;
-      }
+    // Index the folder's own thumbnails by path - one pass, nothing built.
+    var kids = app.document.thumbnail.children;
+    var byPath = {};
+    for (var i = 0, n = kids.length; i < n; i++) {
+      var kp = cxbThumbPath(kids[i]);
+      if (kp) byPath[kp] = kids[i];
     }
 
-    if (thumbs.length === 0) {
-      return cxbJSON({ success: false, error: "none of those files could be found" });
+    var wanted = [];
+    var notInFolder = 0;
+    for (var j = 0; j < paths.length; j++) {
+      if (limit && wanted.length >= limit) break;
+      var thumb = byPath[paths[j]];
+      if (thumb) wanted.push(thumb); else notInFolder++;
     }
 
-    var how = null;
-    try {
-      app.document.selections = thumbs;
-      how = "bulk";
-    } catch (eBulk) {
-      // Older builds may not accept a whole-array assignment. Fall back to the
-      // incremental route, but only for a small set - it is what crashed.
-      try { app.document.deselectAll(); } catch (eClear) {}
-      var capped = Math.min(thumbs.length, 200);
-      for (var j = 0; j < capped; j++) {
-        try { app.document.select(thumbs[j]); } catch (eOne) {}
-      }
-      how = "incremental (capped at " + capped + ")";
+    if (wanted.length === 0) {
+      return cxbJSON({
+        success: false,
+        error: notInFolder
+          ? "none of those " + notInFolder + " files are in the folder Bridge is showing"
+          : "nothing to select"
+      });
+    }
+
+    var started = new Date().getTime();
+    try { app.document.deselectAll(); } catch (eClear) {}
+
+    var refused = 0;
+    for (var s = 0; s < wanted.length; s++) {
+      try { app.document.select(wanted[s]); } catch (eOne) { refused++; }
     }
 
     try { app.bringToFront(); } catch (eFront) {}
 
+    // Deliberately does NOT read the selection back here. Bridge does not
+    // settle app.document.selections synchronously at size: after selecting
+    // 1,559 files it still reported 0 in this same call, while a read a few
+    // hundred milliseconds later correctly reported 1,559. Verifying inline
+    // would therefore report a failure that did not happen - the mirror image
+    // of the bug this replaces. The panel polls cxbSelectionCount() instead.
     return cxbJSON({
       success: true,
-      selected: thumbs.length,
       requested: paths.length,
-      missing: missing,
-      via: how
+      attempted: wanted.length,
+      notInFolder: notInFolder,
+      refused: refused,
+      elapsedMs: new Date().getTime() - started
     });
   } catch (e) {
     return cxbErr(e, "cxbSelectFiles");
+  }
+}
+
+/**
+ * How many thumbnails Bridge currently has selected.
+ *
+ * Exists so a selection can be checked rather than assumed. It has to be a
+ * separate call: Bridge updates this property lazily, so it is only truthful
+ * once the caller has let some time pass since the selection was made.
+ */
+function cxbSelectionCount() {
+  try {
+    if (!app.document) return cxbJSON({ success: true, count: 0, noDocument: true });
+    return cxbJSON({ success: true, count: app.document.selections.length });
+  } catch (e) {
+    return cxbErr(e, "cxbSelectionCount");
   }
 }
 
@@ -657,11 +720,17 @@ function cxbApplyLabels(jsonPath) {
     }
 
     // Switch Bridge to its own label sort and force a re-read.
-    try { app.document.sorts = [{ name: "label", reverse: false }]; } catch (eSort) {}
+    var sortError = null;
+    try {
+      app.document.sorts = [{ name: "label", reverse: false }];
+    } catch (eSort) {
+      sortError = String(eSort.message || eSort);
+    }
     try { app.document.refresh(); } catch (eRef) {}
 
     return cxbJSON({
-      success: true, written: written, cleared: cleared, failed: failed
+      success: true, written: written, cleared: cleared, failed: failed,
+      sortError: sortError
     });
   } catch (e) {
     return cxbErr(e, "cxbApplyLabels");
@@ -685,10 +754,16 @@ var CXB_ORIGINAL_NAME = "originalName";
 
 /**
  * Any prefix this panel has written - never let them stack.
- * \d{3,} rather than \d{3}: the similarity prefix uses a wider sequence field
- * (P0000), which a fixed width silently failed to match.
+ *
+ * This MUST stay identical to PREFIX_SOURCE in js/naming.js. ExtendScript
+ * cannot load the panel's modules, so the string is duplicated here and
+ * test/naming.test.js compares the two character for character. They drifted
+ * apart once already: the panel widened the sequence field to P0042 and this
+ * copy's fixed-width \d{3} silently stopped matching, which would have stacked
+ * a second prefix on the next run.
  */
-var CXB_PREFIX_RE = /^(?:[A-Z]\d{3,}(?:-[A-Z]\d{3,})*_|\d{4,}_)/;
+var CXB_PREFIX_SOURCE = '^(?:[A-Z]\\d{3,}(?:-[A-Z]\\d{3,})*_|\\d{4,}_)';
+var CXB_PREFIX_RE = new RegExp(CXB_PREFIX_SOURCE);
 
 function cxbBaseName(path) {
   var parts = String(path).split("/");
@@ -699,28 +774,62 @@ function cxbStripPrefix(name) {
   return String(name).replace(CXB_PREFIX_RE, "");
 }
 
-/** Remember the pre-rename filename once, so Undo is exact. */
+/**
+ * Remember the pre-rename filename once, so Undo is exact.
+ *
+ * Probes read-only first. Opening OPEN_FOR_UPDATE and closing with
+ * CLOSE_UPDATE_SAFELY rewrites the whole file - for a 2 MB PNG that is a full
+ * copy - and on any re-run over an already-numbered folder the name is already
+ * stored, so every one of those rewrites was wasted. The read-only probe costs
+ * a header parse and skips the rewrite entirely in the common case.
+ *
+ * @returns {string} "present" | "written" | "failed: <reason>"
+ */
 function cxbRememberOriginal(file, originalName) {
+  var path = file.fsName;
+  var format = cxbFormatFor(cxbExtOf(path));
+
   try {
-    var xf = new XMPFile(file.fsName, cxbFormatFor(cxbExtOf(file.fsName)),
-      XMPConst.OPEN_FOR_UPDATE);
+    var probe = new XMPFile(path, format, XMPConst.OPEN_FOR_READ);
+    var existing = probe.getXMP().getProperty(CXB_NS, CXB_ORIGINAL_NAME);
+    probe.closeFile(0);
+    if (existing) return "present";
+  } catch (eProbe) {
+    // No readable XMP yet; fall through and try to create it.
+  }
+
+  try {
+    var xf = new XMPFile(path, format, XMPConst.OPEN_FOR_UPDATE);
     var xmp = xf.getXMP();
-    if (!xmp.getProperty(CXB_NS, CXB_ORIGINAL_NAME)) {
-      xmp.setProperty(CXB_NS, CXB_ORIGINAL_NAME, originalName);
-      if (xf.canPutXMP(xmp)) xf.putXMP(xmp);
+    xmp.setProperty(CXB_NS, CXB_ORIGINAL_NAME, originalName);
+
+    if (!xf.canPutXMP(xmp)) {
+      xf.closeFile(0);
+      return "failed: canPutXMP refused";
     }
+    xf.putXMP(xmp);
     xf.closeFile(XMPConst.CLOSE_UPDATE_SAFELY);
+    return "written";
   } catch (e) {
-    // Not fatal: cxbStripPrefix can still recover the name.
+    // Not fatal - cxbStripPrefix can still recover the name - but it is the
+    // difference between an exact Undo and a regex guess, so it is counted and
+    // reported rather than swallowed.
+    return "failed: " + String(e.message || e);
   }
 }
 
-/** Keep a sidecar's stem matched to its image, or it is orphaned. */
+/**
+ * Keep a sidecar's stem matched to its image, or it is orphaned.
+ * @returns {boolean} false only when a sidecar exists and could not be moved
+ */
 function cxbRenameSidecar(oldPath, newFileName) {
   try {
     var side = new File(cxbSidecarPathFor(oldPath));
-    if (side.exists) side.rename(newFileName.replace(/\.[^.]+$/, "") + ".xmp");
-  } catch (e) {}
+    if (!side.exists) return true;
+    return !!side.rename(newFileName.replace(/\.[^.]+$/, "") + ".xmp");
+  } catch (e) {
+    return false;
+  }
 }
 
 /**
@@ -736,6 +845,15 @@ function cxbApplyPrefixes(jsonPath) {
     var skipped = 0;
     var failed = [];
     var renames = {};
+    // Undo falls back to a regex strip when the original name was never
+    // stored. That guess is wrong for a user file legitimately named like
+    // "A123_photo.jpg", so a wholesale failure to record names must be
+    // visible rather than discovered at Undo time.
+    var nameUnrecorded = 0;
+    var nameError = null;
+    // A sidecar left behind under the old stem is orphaned: its image has
+    // moved and nothing will ever read it again.
+    var orphanedSidecars = 0;
 
     for (var i = 0; i < items.length; i++) {
       var oldPath = items[i].filePath;
@@ -749,10 +867,14 @@ function cxbApplyPrefixes(jsonPath) {
 
         if (current === target) { skipped++; renames[oldPath] = oldPath; continue; }
 
-        cxbRememberOriginal(file, original);
+        var remembered = cxbRememberOriginal(file, original);
+        if (remembered.indexOf("failed") === 0) {
+          nameUnrecorded++;
+          if (!nameError) nameError = remembered.slice(8);
+        }
 
         if (file.rename(target)) {
-          cxbRenameSidecar(oldPath, target);
+          if (!cxbRenameSidecar(oldPath, target)) orphanedSidecars++;
           renamed++;
           renames[oldPath] = file.fsName;
         } else {
@@ -764,12 +886,20 @@ function cxbApplyPrefixes(jsonPath) {
     }
 
     // Filename order is now colour order, so point Bridge at it.
-    try { app.document.sorts = [{ name: "name", reverse: false }]; } catch (eSort) {}
+    var sortError = null;
+    try {
+      app.document.sorts = [{ name: "name", reverse: false }];
+    } catch (eSort) {
+      sortError = String(eSort.message || eSort);
+    }
     try { app.document.refresh(); } catch (eRef) {}
 
     return cxbJSON({
       success: true, renamed: renamed, skipped: skipped,
-      failed: failed, renames: renames
+      failed: failed, renames: renames,
+      nameUnrecorded: nameUnrecorded, nameError: nameError,
+      orphanedSidecars: orphanedSidecars,
+      sortError: sortError
     });
   } catch (e) {
     return cxbErr(e, "cxbApplyPrefixes");
@@ -785,6 +915,11 @@ function cxbRestoreNames(jsonPath) {
     var restored = 0;
     var failed = [];
     var renames = {};
+    // How many names came from the stored original versus a regex guess. The
+    // guess is only exact if no filename legitimately looks like a prefix, so
+    // the split is reported rather than hidden behind "restored: n".
+    var fromXmp = 0;
+    var fromStrip = 0;
 
     for (var i = 0; i < paths.length; i++) {
       var oldPath = paths[i];
@@ -801,9 +936,13 @@ function cxbRestoreNames(jsonPath) {
           var got = xf.getXMP().getProperty(CXB_NS, CXB_ORIGINAL_NAME);
           if (got) original = String(got);
           xf.closeFile(0);
-        } catch (eRead) {}
+        } catch (eRead) {
+          // Unreadable XMP; the strip fallback below still recovers a name.
+        }
 
-        if (!original) original = cxbStripPrefix(current);
+        if (original) fromXmp++;
+        else { original = cxbStripPrefix(current); fromStrip++; }
+
         if (original === current) { renames[oldPath] = oldPath; continue; }
 
         if (file.rename(original)) {
@@ -820,24 +959,30 @@ function cxbRestoreNames(jsonPath) {
 
     try { app.document.refresh(); } catch (eRef) {}
     return cxbJSON({
-      success: true, restored: restored, failed: failed, renames: renames
+      success: true, restored: restored, failed: failed, renames: renames,
+      fromXmp: fromXmp, fromStrip: fromStrip
     });
   } catch (e) {
     return cxbErr(e, "cxbRestoreNames");
   }
 }
 
-/** Ask Bridge to re-read metadata for the given files. */
-function cxbRefresh(jsonPath) {
+/**
+ * Ask Bridge to re-read metadata.
+ *
+ * Deliberately whole-document only. The previous version accepted a path list
+ * and did `new Thumbnail(new File(p)).refresh()` per file - the exact shape
+ * that terminated Bridge from cxbSelectFiles at 1,559 files, since every
+ * Thumbnail construction forces a content-pane update. app.document.refresh()
+ * does the same job for the whole folder in one call, so there is nothing to
+ * gain from the loop and a crash to lose. The parameter is still accepted and
+ * ignored, so older callers keep working.
+ */
+function cxbRefresh() {
   try {
-    if (jsonPath) {
-      var paths = eval("(" + cxbReadFile(jsonPath) + ")");
-      for (var i = 0; i < paths.length; i++) {
-        try { new Thumbnail(new File(paths[i])).refresh(); } catch (e) {}
-      }
-    }
-    try { app.document.refresh(); } catch (e2) {}
-    return cxbJSON({ success: true });
+    if (!app.document) return cxbJSON({ success: true, refreshed: false });
+    app.document.refresh();
+    return cxbJSON({ success: true, refreshed: true });
   } catch (e) {
     return cxbErr(e, "cxbRefresh");
   }
@@ -847,7 +992,8 @@ function cxbRefresh(jsonPath) {
 // Diagnostics
 //= ============================================================================
 
-function cxbDiagnostics() {
+/** Every probe is individually guarded, so one missing API cannot blank the rest. */
+function cxbProbeAll() {
   var d = {};
 
   function probe(key, fn) {
@@ -897,11 +1043,39 @@ function cxbDiagnostics() {
     return keys.join(",");
   });
 
-  return cxbJSON({ success: true, diagnostics: d });
+  return d;
 }
 
+function cxbDiagnostics() {
+  try {
+    return cxbJSON({ success: true, diagnostics: cxbProbeAll() });
+  } catch (e) {
+    return cxbErr(e, "cxbDiagnostics");
+  }
+}
+
+/**
+ * Same diagnostics, also dropped on disk so they can be read without the
+ * panel. A failed write is reported rather than swallowed: silently not
+ * writing the file it was asked for is how a diagnostic stops being one.
+ */
 function cxbDiagnosticsToFile(outPath) {
-  var json = cxbDiagnostics();
-  try { cxbWriteFile(outPath || "/tmp/cxb-diag.json", json); } catch (e) {}
-  return json;
+  try {
+    var path = outPath || "/tmp/cxb-diag.json";
+    var d = cxbProbeAll();
+    var written = null;
+    var writeError = null;
+
+    try {
+      written = cxbWriteFile(path, cxbJSON({ success: true, diagnostics: d }));
+    } catch (eWrite) {
+      writeError = String(eWrite.message || eWrite);
+    }
+
+    return cxbJSON({
+      success: true, diagnostics: d, written: written, writeError: writeError
+    });
+  } catch (e) {
+    return cxbErr(e, "cxbDiagnosticsToFile");
+  }
 }

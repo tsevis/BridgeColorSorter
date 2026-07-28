@@ -74,6 +74,14 @@
             <option value="coarse">Coarse</option>
           </select>
         </label>
+        <label class="field-col">
+          <span class="field-label">Hue groups</span>
+          <select id="hueBandsSelect" class="select">
+            <option value="family">Colour families</option>
+            <option value="fixed">Equal arcs</option>
+            <option value="adaptive">Fit to this folder</option>
+          </select>
+        </label>
         <label class="field-col checkline">
           <input type="checkbox" id="serpentineToggle" checked>
           <span>Smooth transitions</span>
@@ -154,6 +162,9 @@
 
   <script src="js/CSInterface.js"></script>
   <script src="js/colorNames.js"></script>
+  <script src="js/naming.js"></script>
+  <script src="js/storedPalette.js"></script>
+  <script src="js/hueBands.js"></script>
   <script src="js/analyzer/ColorEngine.js"></script>
   <script src="js/similarity.js"></script>
   <script src="js/app.js"></script>

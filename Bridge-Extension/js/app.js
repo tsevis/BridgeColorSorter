@@ -43,6 +43,15 @@
       representative: 'balanced',
       sortMode: 'criteria',
       grouping: 'coarse',
+      // How the hue wheel is divided into groups:
+      //   'family'   one group per perceptual colour family, so a family
+      //              ramps once instead of splitting into two gradients
+      //   'fixed'    equal 45-degree arcs, which cut wherever the arithmetic
+      //              lands - on the measured folder that was the middle of
+      //              the golds
+      //   'adaptive' bands fitted to this folder's own colour masses; rejected
+      //              by eye because it lumped greens and cyans in with blues
+      hueBands: 'family',
       serpentine: true,
       writeXmp: true,
       writeKeywords: true, // additive; drives Bridge's Filter panel
@@ -114,14 +123,38 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
-  function baseName(p) {
-    var parts = String(p).split(/[\\/]/);
-    return parts[parts.length - 1];
+  var baseName = Naming.baseName;
+  var stripPrefix = Naming.stripPrefix;
+  var pad = Naming.pad;
+
+  /** Human-readable duration. Speed on large folders is the point. */
+  function fmtSeconds(ms) {
+    if (ms < 1000) return ms + ' ms';
+    return (ms / 1000).toFixed(1) + ' s';
   }
 
   //= ==========================================================================
   // Analysis
   //= ==========================================================================
+
+  /**
+   * How many analyses are in flight at once.
+   *
+   * Measured on the 1,559-image folder, 96-image samples, this machine
+   * (20 cores): concurrency 1, 2, 4, 8, 12, 16 and 20 all land within noise of
+   * each other at ~41 ms per image. It makes no difference, because almost
+   * none of the work is actually concurrent — reading the file, building the
+   * Blob, drawImage, getImageData and the clustering are all on the panel's
+   * single JS thread. Only Chromium's own decode is off-thread, and it is a
+   * small share of the 25 ms "decode" figure.
+   *
+   * So this number is not tuned, it is irrelevant, and raising it would only
+   * add memory pressure. Four is kept because it bounds how many decoded
+   * images are resident at once. The real lever is moving decode and
+   * clustering into Web Workers, which would put the other 19 cores to work;
+   * that is a change to make deliberately, not by turning this dial.
+   */
+  var ANALYSIS_CONCURRENCY = 4;
 
   /** Run analyses with limited concurrency so the panel stays responsive. */
   function analyzeAll(files, onProgress) {
@@ -129,7 +162,7 @@
     var errors = [];
     var index = 0;
     var done = 0;
-    var limit = Math.min(4, files.length);
+    var limit = Math.min(ANALYSIS_CONCURRENCY, files.length);
 
     function worker() {
       if (index >= files.length) return Promise.resolve();
@@ -163,25 +196,16 @@
 
   /** Rebuild a full record from the compact form stored in XMP. */
   function recordFromStored(filePath, stored) {
-    function colourFromHex(hex, dominance) {
-      var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
-      if (!m) return null;
-      var rgb = [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+    // HSL and OKLCH are recomputed from the hex rather than stored, so the
+    // colour spaces can change without invalidating every file's cache.
+    var palette = StoredPalette.parse(stored.palette).map(function (c) {
       return {
-        hex: '#' + m[1] + m[2] + m[3],
-        rgb: rgb,
-        hsl: ColorEngine.rgbToHsl(rgb[0], rgb[1], rgb[2]),
-        oklch: ColorEngine.rgbToOklch(rgb[0], rgb[1], rgb[2]),
-        dominance: dominance
+        hex: c.hex,
+        rgb: c.rgb,
+        hsl: ColorEngine.rgbToHsl(c.rgb[0], c.rgb[1], c.rgb[2]),
+        oklch: ColorEngine.rgbToOklch(c.rgb[0], c.rgb[1], c.rgb[2]),
+        dominance: c.dominance
       };
-    }
-
-    var palette = [];
-    String(stored.palette || '').split(',').forEach(function (part) {
-      var bits = part.split('|');
-      if (bits.length !== 2) return;
-      var c = colourFromHex(bits[0], parseFloat(bits[1]) || 0);
-      if (c) palette.push(c);
     });
 
     if (palette.length === 0) return null;
@@ -206,6 +230,13 @@
    * re-analysis of a large folder into a few seconds.
    */
   function loadStored(files) {
+    // A failed cache read is not fatal - everything is simply re-analysed -
+    // but it turns a 4-second re-order into a several-minute one, so the
+    // reason is carried back rather than silently absorbed.
+    function noCache(why) {
+      return { cached: {}, remaining: files, warning: why };
+    }
+
     if (state.settings.forceReanalyse) {
       return Promise.resolve({ cached: {}, remaining: files });
     }
@@ -214,26 +245,42 @@
     try {
       payload = writeTempJson('paths.json', files);
     } catch (e) {
-      return Promise.resolve({ cached: {}, remaining: files });
+      return Promise.resolve(noCache('could not hand the file list to Bridge: ' +
+        e.message));
     }
 
     return evalScript('cxbReadColorBatch("' + esc(payload) + '")')
       .then(function (reply) {
-        if (!reply.success) return { cached: {}, remaining: files };
+        if (!reply.success) {
+          return noCache('Bridge could not read saved colour data: ' +
+            (reply.error || 'unknown'));
+        }
 
         var cached = {};
         var remaining = [];
+        var unparsable = 0;
 
         files.forEach(function (f) {
           var stored = reply.data ? reply.data[f] : null;
           var rec = stored ? recordFromStored(f, stored) : null;
-          if (rec) cached[f] = rec; else remaining.push(f);
+          if (rec) { cached[f] = rec; return; }
+          // Stored but unreadable is different from never analysed: it means
+          // the palette string in XMP did not parse.
+          if (stored) unparsable++;
+          remaining.push(f);
         });
 
-        return { cached: cached, remaining: remaining };
+        return {
+          cached: cached,
+          remaining: remaining,
+          elapsedMs: reply.elapsedMs,
+          warning: unparsable
+            ? unparsable + ' file(s) had saved colour data that would not parse'
+            : null
+        };
       })
-      .catch(function () {
-        return { cached: {}, remaining: files };
+      .catch(function (e) {
+        return noCache('saved colour data could not be read: ' + e.message);
       });
   }
 
@@ -241,7 +288,33 @@
     var call = which === 'folder' ? 'cxbGetFolderImages()' : 'cxbGetSelection()';
     return evalScript(call).then(function (reply) {
       if (!reply.success) throw new Error(reply.error || 'Bridge refused the request');
-      return reply.files || [];
+
+      var files = reply.files || [];
+      if (files.length > 0) {
+        // Losing a few files to unreadable thumbnails is worth saying out loud;
+        // it is otherwise indistinguishable from those files not existing.
+        if (reply.unreadable) {
+          setStatus(reply.unreadable + ' item(s) had no readable path and were ' +
+            'skipped.', 'error');
+        }
+        return files;
+      }
+
+      // Empty needs a reason. "Select some images first" is a lie when the
+      // selection was full of things whose paths Bridge would not hand over.
+      if (reply.noDocument) throw new Error('Bridge has no folder open.');
+      if (reply.unreadable) {
+        throw new Error('Bridge would not give a path for any of the ' +
+          reply.unreadable + ' selected item(s). Try clicking into the folder ' +
+          'in Bridge first.');
+      }
+      if (reply.notImages) {
+        throw new Error('None of the ' + reply.notImages + ' selected item(s) ' +
+          'are image formats ColorXBridge can read.');
+      }
+      throw new Error(which === 'folder'
+        ? 'No images in this folder.'
+        : 'Nothing selected in Bridge. Select some images first.');
     });
   }
 
@@ -252,12 +325,6 @@
 
     collectFiles(which)
       .then(function (files) {
-        if (files.length === 0) {
-          throw new Error(which === 'folder'
-            ? 'No images in this folder.'
-            : 'Nothing selected in Bridge. Select some images first.');
-        }
-
         setStatus('Checking ' + files.length + ' file' +
           (files.length === 1 ? '' : 's') + ' for saved colour data…');
 
@@ -265,8 +332,12 @@
           var todo = split.remaining;
 
           if (todo.length === 0) {
-            setStatus('Loaded ' + files.length + ' from saved data');
-            return { results: split.cached, errors: [], reused: files.length, fresh: 0 };
+            setStatus('Loaded ' + files.length + ' from saved data' +
+              (split.elapsedMs ? ' in ' + fmtSeconds(split.elapsedMs) : ''));
+            return {
+              results: split.cached, errors: [], reused: files.length, fresh: 0,
+              warning: split.warning
+            };
           }
 
           setStatus((split.remaining.length === files.length
@@ -275,6 +346,7 @@
             ' image' + (todo.length === 1 ? '' : 's') + '…');
           setProgress(0, todo.length);
 
+          var analysisStart = Date.now();
           return analyzeAll(todo, setProgress).then(function (outcome) {
             var merged = {};
             for (var a in split.cached) {
@@ -288,7 +360,9 @@
               errors: outcome.errors,
               reused: Object.keys(split.cached).length,
               fresh: outcome.results,
-              freshCount: Object.keys(outcome.results).length
+              freshCount: Object.keys(outcome.results).length,
+              analysisMs: Date.now() - analysisStart,
+              warning: split.warning
             };
           });
         });
@@ -313,18 +387,27 @@
           ? outcome.reused + ' reused' +
             (outcome.freshCount ? ', ' + outcome.freshCount + ' analysed' : '')
           : count + ' analysed';
+        if (outcome.freshCount && outcome.analysisMs) {
+          note += ' in ' + fmtSeconds(outcome.analysisMs) +
+            ' (' + Math.round(outcome.analysisMs / outcome.freshCount) + ' ms each)';
+        }
         if (outcome.errors.length) note += ', ' + outcome.errors.length + ' skipped';
+
+        // A cache miss the user did not ask for is the difference between a
+        // few seconds and several minutes, so it is stated rather than left to
+        // be inferred from the wait.
+        if (outcome.warning) note += ' — ' + outcome.warning;
 
         // Only newly analysed files need writing; the rest came from XMP.
         var toWrite = outcome.fresh && typeof outcome.fresh === 'object' ? outcome.fresh : {};
         if (!state.settings.writeXmp || Object.keys(toWrite).length === 0) {
-          setStatus(note, 'ok');
+          setStatus(note, outcome.warning ? 'error' : 'ok');
           return null;
         }
 
         setStatus(note + ' — writing metadata…');
         return pushToBridge(toWrite).then(function (msg) {
-          setStatus(note + ' — ' + msg, 'ok');
+          setStatus(note + ' — ' + msg, outcome.warning ? 'error' : 'ok');
         });
       })
       .catch(function (err) {
@@ -357,22 +440,13 @@
       .then(function (reply) {
         if (!reply.success) throw new Error(reply.error || 'metadata write failed');
 
-        var embedded = 0;
-        var sidecar = 0;
-        var embedError = null;
-        (reply.modes || []).forEach(function (m) {
-          if (m.mode === 'embedded') {
-            embedded++;
-          } else {
-            sidecar++;
-            if (!embedError && m.embedError) embedError = m.embedError;
-          }
-        });
+        var embedded = reply.embedded || 0;
+        var sidecar = reply.sidecar || 0;
 
         // Bridge only reads sidecars for camera raw. If everything fell back,
         // the metadata is somewhere Bridge will never look - say so loudly.
-        if (embedded === 0 && sidecar > 0 && embedError) {
-          throw new Error('Could not embed XMP in any file (' + embedError +
+        if (embedded === 0 && sidecar > 0 && reply.embedError) {
+          throw new Error('Could not embed XMP in any file (' + reply.embedError +
             '). Bridge only reads .xmp sidecars for camera raw, so these ' +
             'keywords will not appear in the Filter panel.');
         }
@@ -384,7 +458,9 @@
         if (reply.failed && reply.failed.length) {
           msg += ', ' + reply.failed.length + ' failed';
         }
-        return evalScript('cxbRefresh("")').then(function () { return msg; })
+        if (reply.elapsedMs) msg += ' in ' + fmtSeconds(reply.elapsedMs);
+
+        return evalScript('cxbRefresh()').then(function () { return msg; })
           .catch(function () { return msg; });
       });
   }
@@ -422,13 +498,50 @@
     coarse: { hue: 8,  chroma: 3, lightness: 3, dominance: 3 }
   };
 
+  /**
+   * How light the whole image reads, 0-100.
+   *
+   * NOT the lightness of the representative colour, which is what this used to
+   * sort on. The representative is one swatch — the most colourful significant
+   * cluster — and on a real folder its lightness disagrees with the image's by
+   * 14 points on average, and by more than 20 points for a quarter of the
+   * library. The worst case measured was a bright tile whose representative was
+   * a near-black blue accent at L 21 against an actual lightness of 73: sorting
+   * put it at the dark end of the blue ramp, where it read as noise.
+   *
+   * The eye judges a thumbnail by the whole tile, so the ramp has to be built
+   * on the whole tile. Ordering on this instead cut the mean lightness step
+   * between neighbours from 8.16 to 0.34.
+   *
+   * Cached on the record: it is read once per comparison in a sort.
+   */
+  function meanLightness(rec) {
+    if (rec._meanL !== undefined) return rec._meanL;
+
+    var palette = rec.palette || [];
+    var sum = 0;
+    var weight = 0;
+    for (var i = 0; i < palette.length; i++) {
+      var c = palette[i];
+      sum += ColorEngine.rgbToOklab(c.rgb[0], c.rgb[1], c.rgb[2])[0] * c.dominance;
+      weight += c.dominance;
+    }
+
+    rec._meanL = weight > 0
+      ? Math.round((sum / weight) * 100)
+      : lch(repOf(rec))[0];
+    return rec._meanL;
+  }
+
+  // `raw` takes the representative colour AND the record: hue and chroma are
+  // properties of the chosen swatch, lightness is a property of the picture.
   var CRITERIA = [
     { key: 'hue', label: 'hue', letter: 'H', max: 359,
       raw: function (c) { return lch(c)[2]; } },
     { key: 'chroma', label: 'chroma', letter: 'C', max: 100,
       raw: function (c) { return lch(c)[1]; } },
     { key: 'lightness', label: 'lightness', letter: 'L', max: 100,
-      raw: function (c) { return lch(c)[0]; } },
+      raw: function (c, rec) { return meanLightness(rec); } },
     { key: 'dominance', label: 'dominance', letter: 'D', max: 100,
       raw: function (c) { return Math.round(c.dominance * 100); } }
   ];
@@ -441,14 +554,17 @@
     return rec.representative || rec.dominant;
   }
 
-  function isAchromatic(colour) {
-    return lch(colour)[1] < ACHROMATIC_CHROMA;
+  /**
+   * A sort key that survives renaming: the user's own filename, with any
+   * prefix this panel wrote stripped off. Used only to break exact ties, where
+   * the relative order of two records is otherwise arbitrary.
+   */
+  function stableKey(filePath) {
+    return stripPrefix(baseName(filePath));
   }
 
-  function pad(n, width) {
-    var s = String(Math.max(0, Math.round(n)));
-    while (s.length < width) s = '0' + s;
-    return s;
+  function isAchromatic(colour) {
+    return lch(colour)[1] < ACHROMATIC_CHROMA;
   }
 
   function enabledCriteria() {
@@ -468,10 +584,50 @@
    * the last one to sort smoothly inside.
    */
   function bucket(criterion, value) {
+    // Hue is circular and its groups are fitted to the folder, so it does not
+    // use the fixed-width scheme the linear criteria do.
+    if (criterion.key === 'hue') return HueBands.bandOf(value, hueCuts());
+
     var steps = GRANULARITY[state.settings.grouping][criterion.key];
     if (!steps) return value;
     var span = criterion.max + 1;
     return Math.min(steps - 1, Math.floor(value / (span / steps)));
+  }
+
+  /**
+   * Where the hue wheel is cut for the current set of results.
+   *
+   * Recomputed whenever the results or the grouping change, and cached in
+   * between: every comparison in a sort asks for it.
+   */
+  var hueCutCache = null;
+
+  function invalidateHueBands() { hueCutCache = null; }
+
+  function hueCuts() {
+    if (hueCutCache) return hueCutCache;
+
+    if (state.settings.hueBands === 'family') {
+      hueCutCache = HueBands.FAMILY_CUTS;
+      return hueCutCache;
+    }
+
+    if (state.settings.hueBands === 'fixed') {
+      var arcs = GRANULARITY[state.settings.grouping].hue;
+      hueCutCache = [];
+      for (var f = 0; f < arcs; f++) hueCutCache.push(Math.round(f * 360 / arcs));
+      return hueCutCache;
+    }
+
+    var hues = [];
+    Object.keys(state.results).forEach(function (k) {
+      var colour = repOf(state.results[k]);
+      if (!isAchromatic(colour)) hues.push(lch(colour)[2]);
+    });
+
+    hueCutCache = HueBands.cuts(
+      hues, state.settings.grouping, GRANULARITY[state.settings.grouping].hue);
+    return hueCutCache;
   }
 
   /** Grouping key: every ticked criterion except the last, quantised. */
@@ -483,7 +639,7 @@
     for (var i = 0; i < list.length - 1; i++) {
       var c = list[i];
       if (c.key === 'hue' && isAchromatic(colour)) key.push(ACHROMATIC_BUCKET);
-      else key.push(bucket(c, c.raw(colour)));
+      else key.push(bucket(c, c.raw(colour, rec)));
     }
     return key;
   }
@@ -495,8 +651,10 @@
     var last = list[list.length - 1];
     var colour = repOf(rec);
 
-    if (last.key === 'hue' && isAchromatic(colour)) return lch(colour)[0];
-    return last.raw(colour);
+    // A grey has no hue to order by, so the only axis with anything to say
+    // about it is how light it is.
+    if (last.key === 'hue' && isAchromatic(colour)) return meanLightness(rec);
+    return last.raw(colour, rec);
   }
 
   function compareGroups(a, b) {
@@ -570,6 +728,11 @@
   }
 
   function rebuildOrder() {
+    // The hue groups are fitted to the set being sorted, so they are stale the
+    // moment the set or the granularity changes. Recomputed here, once, rather
+    // than inside the comparator.
+    invalidateHueBands();
+
     if (state.settings.sortMode === 'similarity') {
       rebuildOrderBySimilarity();
       return;
@@ -590,7 +753,15 @@
       var d = fineValue(a) - fineValue(b);
       if (d !== 0) return lastDesc ? -d : d;
 
-      return aKey < bKey ? -1 : (aKey > bKey ? 1 : 0); // stable on filename
+      // Ties break on the ORIGINAL filename, not the current one. Numbering
+      // rewrites the current name, so tiebreaking on it made the order depend
+      // on whether the folder had been numbered before: pressing "Number
+      // files" a second time reshuffled the tied items and renamed 134 of 400
+      // for no reason. The stripped name does not move, so a second run is now
+      // a no-op.
+      var na = stableKey(aKey);
+      var nb = stableKey(bKey);
+      return na < nb ? -1 : (na > nb ? 1 : 0);
     });
 
     if (state.settings.serpentine) ordered = serpentine(ordered);
@@ -649,7 +820,7 @@
       // Grouping criteria, quantised, in priority order.
       for (var i = 0; i < key.length; i++) {
         parts.push(key[i] === ACHROMATIC_BUCKET
-          ? 'Z' + pad(lch(colour)[0], FIELD_WIDTH)
+          ? 'Z' + pad(meanLightness(rec), FIELD_WIDTH)
           : list[i].letter + pad(key[i], FIELD_WIDTH));
       }
 
@@ -661,24 +832,14 @@
       // The final criterion's real value - ordering when unsmoothed,
       // information when smoothed.
       var fine = (last.key === 'hue' && isAchromatic(colour))
-        ? lch(colour)[0]
-        : last.raw(colour);
+        ? meanLightness(rec)
+        : last.raw(colour, rec);
       parts.push(last.letter + pad(fine, FIELD_WIDTH));
 
       out[f] = parts.join('-');
     });
 
     return out;
-  }
-
-  /** Matches any prefix this panel has ever written, so re-runs never stack. */
-  var PREFIX_RE = /^(?:[A-Z]\d{3,}(?:-[A-Z]\d{3,})*_|\d{4,}_)/;
-  // \d{3,} not \d{3}: the similarity prefix uses a wider sequence field
-  // (P0000), and a fixed width silently failed to strip it - which would have
-  // stacked prefixes on the next run.
-
-  function stripPrefix(name) {
-    return String(name).replace(PREFIX_RE, '');
   }
 
   function describeSort() {
@@ -769,6 +930,42 @@
    * The original name is preserved intact after the prefix, and stored in XMP,
    * so Undo is exact.
    */
+  /**
+   * Narrow a list of results to the folder Bridge is actually showing.
+   *
+   * Results accumulate across runs so repeated analyses build up, which is
+   * right for the list — but catastrophic for anything that renames. Analysing
+   * one folder, moving to another and pressing Undo used to rename files in
+   * BOTH, because the rename paths read the whole accumulated set. That is a
+   * silent edit to files the user is not even looking at.
+   *
+   * @returns {Promise<{here: string[], elsewhere: number, folder: string}>}
+   */
+  function scopeToCurrentFolder(candidates) {
+    return evalScript('cxbGetFolderImages()').then(function (reply) {
+      if (!reply.success || !reply.files) {
+        throw new Error('Could not ask Bridge which folder is open.');
+      }
+      var inFolder = {};
+      reply.files.forEach(function (f) { inFolder[f] = true; });
+
+      var here = candidates.filter(function (f) { return inFolder[f]; });
+      return {
+        here: here,
+        elsewhere: candidates.length - here.length,
+        folder: reply.folder || 'this folder'
+      };
+    });
+  }
+
+  /** Warn about results belonging to other folders, which will be left alone. */
+  function otherFolderNote(scope) {
+    return scope.elsewhere
+      ? '\n\n' + scope.elsewhere + ' other analysed file(s) are not in this ' +
+        'folder and will NOT be touched.'
+      : '';
+  }
+
   function renameForBridge() {
     var shown = state.order.filter(function (f) { return passesFilter(state.results[f]); });
     if (shown.length === 0) {
@@ -780,20 +977,37 @@
       return;
     }
 
-    var prefixes = buildPrefixes(shown);
-    var items = shown.map(function (f) {
-      return { filePath: f, prefix: prefixes[f] };
-    });
+    setStatus('Checking which files are in this folder…');
+    scopeToCurrentFolder(shown).then(function (scope) {
+      if (scope.here.length === 0) {
+        setStatus('None of the listed files are in the folder Bridge is ' +
+          'showing, so there is nothing to number here.', 'error');
+        return;
+      }
 
-    var sample = items[0];
-    if (!window.confirm(
-      'Rename ' + items.length + ' file(s) so Bridge can show them in colour order?\n\n' +
-      'Sorted by: ' + describeSort() + '\n\n' +
-      '    ' + baseName(sample.filePath) + '\n' +
-      ' →  ' + sample.prefix + '_' + stripPrefix(baseName(sample.filePath)) + '\n\n' +
-      'Your original filename is kept after the prefix and saved in the file, ' +
-      'so Undo restores it exactly. Pixels are not touched.')) return;
+      // Prefixes are built from the scoped list, so the numbering runs
+      // 0..n across what is actually being renamed.
+      var prefixes = buildPrefixes(scope.here);
+      var items = scope.here.map(function (f) {
+        return { filePath: f, prefix: prefixes[f] };
+      });
 
+      var sample = items[0];
+      if (!window.confirm(
+        'Rename ' + items.length + ' file(s) in “' + scope.folder + '” so Bridge ' +
+        'can show them in colour order?\n\n' +
+        'Sorted by: ' + describeSort() + '\n\n' +
+        '    ' + baseName(sample.filePath) + '\n' +
+        ' →  ' + sample.prefix + '_' + stripPrefix(baseName(sample.filePath)) + '\n\n' +
+        'Your original filename is kept after the prefix and saved in the file, ' +
+        'so Undo restores it exactly. Pixels are not touched.' +
+        otherFolderNote(scope))) return;
+
+      applyPrefixes(items);
+    }).catch(function (e) { setStatus(e.message, 'error'); });
+  }
+
+  function applyPrefixes(items) {
     var payload;
     try {
       payload = writeTempJson('rename.json', items);
@@ -810,22 +1024,65 @@
         var msg = reply.renamed + ' renamed';
         if (reply.skipped) msg += ', ' + reply.skipped + ' already correct';
         if (reply.failed && reply.failed.length) msg += ', ' + reply.failed.length + ' failed';
-        setStatus(msg + '. Bridge is now sorting by filename.', 'ok');
+        if (reply.orphanedSidecars) {
+          msg += ', ' + reply.orphanedSidecars + ' .xmp sidecar(s) left orphaned';
+        }
 
+        // Re-key first: the files really were renamed, so the panel's state is
+        // stale whatever the warnings below say.
         rekeyAfterRename(items, reply.renames || {});
+
+        // Undo guesses the original name from the prefix when XMP could not
+        // record it. That guess is wrong for a file legitimately named like
+        // "A123_photo.jpg", so say so now rather than at Undo time.
+        if (reply.nameUnrecorded) {
+          setStatus(msg + ' — but the original filename could not be saved for ' +
+            reply.nameUnrecorded + ' file(s) (' + (reply.nameError || 'unknown') +
+            '). Undo will fall back to stripping the prefix, which is exact ' +
+            'only if none of your filenames already look like a prefix.', 'error');
+          return;
+        }
+        if (reply.sortError) {
+          setStatus(msg + ', but Bridge refused to switch to Sort by Filename (' +
+            reply.sortError + '). Set it yourself to see the colour order.', 'error');
+          return;
+        }
+        setStatus(msg + '. Bridge is now sorting by filename.', 'ok');
       })
       .catch(function (e) { setStatus(e.message, 'error'); });
   }
 
-  /** Restore the original filenames. */
+  /**
+   * Restore the original filenames, in the folder Bridge is showing.
+   *
+   * Scoped deliberately. This used to run over every result accumulated in the
+   * session — `Object.keys(state.results)` — so after analysing one folder and
+   * moving to another, Undo silently renamed files in both. It was doing
+   * exactly what it was told, on files the user could not see.
+   */
   function undoRename() {
     var all = Object.keys(state.results);
     if (all.length === 0) {
       setStatus('Nothing to undo.');
       return;
     }
-    if (!window.confirm('Restore the original filenames for ' + all.length + ' file(s)?')) return;
 
+    setStatus('Checking which files are in this folder…');
+    scopeToCurrentFolder(all).then(function (scope) {
+      if (scope.here.length === 0) {
+        setStatus('None of the analysed files are in the folder Bridge is ' +
+          'showing, so there is nothing to undo here.', 'error');
+        return;
+      }
+      if (!window.confirm(
+        'Restore the original filenames for ' + scope.here.length +
+        ' file(s) in “' + scope.folder + '”?' + otherFolderNote(scope))) return;
+
+      restoreNames(scope.here);
+    }).catch(function (e) { setStatus(e.message, 'error'); });
+  }
+
+  function restoreNames(all) {
     var payload;
     try {
       payload = writeTempJson('undo.json', all);
@@ -838,8 +1095,20 @@
     evalScript('cxbRestoreNames("' + esc(payload) + '")')
       .then(function (reply) {
         if (!reply.success) throw new Error(reply.error || 'restore failed');
-        setStatus(reply.restored + ' filename(s) restored', 'ok');
         rekeyAfterRename(all.map(function (f) { return { filePath: f }; }), reply.renames || {});
+
+        var msg = reply.restored + ' filename(s) restored';
+        if (reply.failed && reply.failed.length) msg += ', ' + reply.failed.length + ' failed';
+
+        // An exact restore reads the name back from XMP. Stripping the prefix
+        // is a guess, so say when it was used instead of reporting a clean win.
+        if (reply.fromStrip) {
+          setStatus(msg + ' — ' + reply.fromStrip + ' of them by stripping the ' +
+            'prefix rather than from the saved original name. Check those ' +
+            'filenames.', reply.fromXmp ? '' : 'error');
+          return;
+        }
+        setStatus(msg, 'ok');
       })
       .catch(function (e) { setStatus(e.message, 'error'); });
   }
@@ -917,6 +1186,12 @@
         var msg = reply.written + ' labelled';
         if (reply.cleared) msg += ', ' + reply.cleared + ' cleared (no hue)';
         if (reply.failed && reply.failed.length) msg += ', ' + reply.failed.length + ' failed';
+
+        if (reply.sortError) {
+          setStatus(msg + ', but Bridge refused to switch to Sort by Label (' +
+            reply.sortError + '). Set it yourself to see the grouping.', 'error');
+          return;
+        }
         setStatus(msg + '. Bridge is now sorting by Label.', 'ok');
       })
       .catch(function (e) { setStatus(e.message, 'error'); });
@@ -925,11 +1200,19 @@
   /**
    * Select everything currently listed, in Bridge's content pane.
    *
-   * Capped deliberately. Handing Bridge a very large selection is heavy even in
-   * one assignment, and the earlier one-at-a-time version crashed it outright
-   * at 1,559 files.
+   * Not truncated. The old 500-file cap was sized against a crash that turned
+   * out to be caused by constructing a Thumbnail per file, not by the size of
+   * the selection; with that gone, 1,559 files select in 3.6 s and Bridge is
+   * fine. Silently selecting a third of what the user asked for is worse than
+   * a wait they agreed to, so above the threshold it asks and then does all of
+   * them.
    */
-  var SELECTION_LIMIT = 500;
+  var SELECTION_WARN_AT = 1000;
+
+  /** Measured on this folder: ~2.3 ms per file, slightly superlinear. */
+  function estimateSelectSeconds(count) {
+    return Math.max(1, Math.round(count * 0.0023));
+  }
 
   function selectInBridge() {
     var shown = state.order.filter(function (f) { return passesFilter(state.results[f]); });
@@ -938,32 +1221,69 @@
       return;
     }
 
-    var capped = shown.length > SELECTION_LIMIT;
-    if (capped && !window.confirm(
-      shown.length + ' files are listed. Selecting that many at once can make ' +
-      'Bridge unresponsive, so only the first ' + SELECTION_LIMIT +
-      ' will be selected.\n\nContinue?')) return;
+    if (shown.length > SELECTION_WARN_AT && !window.confirm(
+      'Select all ' + shown.length + ' listed files in Bridge?\n\n' +
+      'Bridge selects them one at a time, so this takes about ' +
+      estimateSelectSeconds(shown.length) + ' seconds and Bridge will be busy ' +
+      'until it finishes. Nothing is modified.')) return;
 
     var payload;
     try {
-      payload = writeTempJson('select.json', { paths: shown, limit: SELECTION_LIMIT });
+      payload = writeTempJson('select.json', { paths: shown });
     } catch (e) {
       setStatus(e.message, 'error');
       return;
     }
 
-    setStatus('Selecting in Bridge…');
+    setStatus('Selecting ' + shown.length + ' in Bridge…');
     evalScript('cxbSelectFiles("' + esc(payload) + '")')
       .then(function (reply) {
         if (!reply.success) throw new Error(reply.error || 'could not select');
-        var msg = 'Selected ' + reply.selected + ' in Bridge';
-        if (reply.requested > reply.selected) {
-          msg += ' (of ' + reply.requested + ' listed)';
-        }
-        if (reply.missing) msg += ', ' + reply.missing + ' not found';
-        setStatus(msg, 'ok');
+
+        return confirmSelection(reply.attempted).then(function (count) {
+          var msg = 'Selected ' + count + ' in Bridge';
+          if (reply.elapsedMs) msg += ' in ' + fmtSeconds(reply.elapsedMs);
+          if (reply.notInFolder) {
+            msg += '; ' + reply.notInFolder + ' are not in the folder Bridge is showing';
+          }
+
+          // The count comes from Bridge itself. Reporting what was asked for
+          // rather than what happened is how this button spent a release
+          // claiming to select 500 files while selecting none at all.
+          if (count !== reply.attempted) {
+            setStatus(msg + ' — but ' + reply.attempted + ' were requested. ' +
+              'Bridge did not take the whole selection.', 'error');
+            return;
+          }
+          setStatus(msg, 'ok');
+        });
       })
       .catch(function (e) { setStatus(e.message, 'error'); });
+  }
+
+  /**
+   * Read the selection back from Bridge, polling until it settles.
+   *
+   * Bridge updates app.document.selections lazily: immediately after selecting
+   * 1,559 files it still reports 0, and only becomes truthful a few hundred
+   * milliseconds later. A single read would therefore call a working selection
+   * a failure, so this waits for the expected count and gives up with whatever
+   * Bridge last said.
+   */
+  function confirmSelection(expected) {
+    var attempts = 8;
+    var gap = 250;
+
+    function poll() {
+      return evalScript('cxbSelectionCount()').then(function (r) {
+        var count = (r && r.success) ? r.count : -1;
+        if (count === expected || --attempts <= 0) return count;
+        return new Promise(function (resolve) {
+          setTimeout(function () { resolve(poll()); }, gap);
+        });
+      });
+    }
+    return poll().catch(function () { return -1; });
   }
 
 
@@ -1176,6 +1496,15 @@
       groupSelect.value = state.settings.grouping;
       groupSelect.addEventListener('change', function () {
         state.settings.grouping = groupSelect.value;
+        applySortQuietly();
+      });
+    }
+
+    var bandsSelect = $('hueBandsSelect');
+    if (bandsSelect) {
+      bandsSelect.value = state.settings.hueBands;
+      bandsSelect.addEventListener('change', function () {
+        state.settings.hueBands = bandsSelect.value;
         applySortQuietly();
       });
     }

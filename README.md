@@ -44,7 +44,41 @@ rather than a silent success.
 | Path | What it is |
 |------|-----------|
 | `Bridge-Extension/` | The CEP panel that runs **inside** Adobe Bridge |
-| `Bridge-Extension/_legacy/` | Superseded source, kept for reference |
+| `Bridge-Extension/test/` | Offline test suite — `npm test`, no dependencies |
+
+---
+
+## Tests
+
+```bash
+cd Bridge-Extension && npm test
+```
+
+126 tests, no dependencies — `node --test` and nothing else. They run without
+Bridge, without Chromium and without network, in under a second.
+
+They cover the colour engine (the composition claims below are executable, not
+prose), the clustering output frozen against a golden fixture, similarity
+ordering, colour naming, the stored-palette format, and filename prefixing.
+
+Several are guards against faults that have actually happened here, and each
+one has been checked to fail when its fault is reintroduced:
+
+- The prefix pattern is duplicated between the panel and the ExtendScript host,
+  which cannot share a file. The two literals are compared character for
+  character; they drifted apart once already.
+- `XMPConst.UNKNOWN` and the wrong `appendArrayItem` argument order — the two
+  mistakes that put every file's metadata where Bridge never looks.
+- ExtendScript is ES3: `const`, arrow functions, `JSON`, `Object.keys` and
+  `forEach` all parse fine in Node and throw inside Bridge, so the host script
+  is scanned for them.
+- No `Thumbnail` may be constructed inside a loop, and nothing may assign
+  `app.document.selections` (see below).
+- Every host entry point must return `cxbJSON(...)` and catch its own errors,
+  or the panel gets `EvalScript error.` and a dead button.
+
+`test/xmp-constants.test.jsx` is separate: it needs the real XMP library, so it
+runs inside Bridge from the panel's console via `cxbTestXmpApi()`.
 
 ---
 
@@ -122,6 +156,36 @@ built-in types, and there is no registration entry point for a custom one. An
 earlier draft of this work assumed otherwise; the panel's own diagnostics and
 the Bridge JavaScript Reference both disprove it.
 
+### Selecting, and how Bridge lies about it
+
+Two facts about Bridge's selection API were established by measurement, and
+both contradict what this code originally assumed:
+
+- **`app.document.selections = [...]` does nothing.** It does not select and it
+  does not throw — assigning three known thumbnails leaves the selection at
+  zero. Any code that assigns it and reports success is reporting a success
+  that never happened, which is exactly what one release of this panel did:
+  "Selected 500 in Bridge" while selecting none.
+- **`app.document.select(thumb)` is the only mechanism that works, and it was
+  never the thing that crashed Bridge.** Driving it 1,559 times over the
+  folder's own child thumbnails takes 3.6 s and Bridge is fine
+  (100 → 151 ms, 600 → 993 ms, 1,000 → 1.9 s, 1,559 → 3.6 s).
+
+What actually crashed Bridge was `new Thumbnail(new File(path))` once per file:
+each construction makes Bridge build a whole thumbnail record. The panel now
+constructs none — it indexes the folder's existing children by path and reuses
+them.
+
+There is a third trap on the way out. **Bridge updates
+`app.document.selections` lazily**, so reading the count straight after
+selecting 1,559 files still returns 0; it becomes truthful a few hundred
+milliseconds later. Verifying inline would therefore report a failure that did
+not happen — the mirror image of the original bug. The panel polls a separate
+`cxbSelectionCount()` until it settles, and reports **that** number rather than
+the number it asked for.
+
+### Getting the order into Bridge's grid
+
 Two routes are available, and they do different jobs:
 
 | Route | What it does | Cost |
@@ -179,6 +243,48 @@ lightness ride along as information.
 > the whole library as a contact sheet settled every question in seconds. Judge
 > this feature by eye, not by a number.
 
+### Where the hue wheel is cut, and why a family must ramp only once
+
+Hue is circular, so any linear ordering has to cut it somewhere — and the cut
+decides whether the grid reads as blocks of colour or as noise.
+
+Equal 45° arcs cut wherever the arithmetic lands. On the 1,559-image folder
+that put a boundary at exactly **90°, in the middle of the golds** (80–89°: 105
+images, 90–99°: 71). Smoothing then reverses every second group, so the golds
+ran light→dark over eight rows and then dark→light over three: **one colour
+family, two gradients.** Rotating the arcs cannot fix it — the golds span 65°
+and an arc is 45°, so no rotation fits them.
+
+**Order by → Hue groups** offers three ways to divide the wheel:
+
+| | What it does | Measured mean lightness step |
+|---|---|---|
+| **Colour families** (default) | One group per perceptual family, so a family ramps once | **0.28** |
+| Equal arcs | Fixed 45° divisions; predictable across folders, but cuts through dense colour | 0.34 |
+| Fit to this folder | Cuts at the valleys in this folder's own hue distribution | 0.32 |
+
+The family boundaries are **measured, not guessed**. They come from the OKLCH
+hue angles of the CSS named colours — via the sibling project Nino, whose
+`HueFamily` bins record them:
+
+```
+pink 15 · red 40 · orange 75 · amber 100 · yellow 122 · chartreuse 139
+green 162 · emerald 180 · cyan 210 · azure 240 · blue 272 · indigo 295
+violet 316 · magenta 345
+```
+
+Fourteen families is finer than the eye groups a library, so adjacent ones a
+viewer would name together are merged into six: `red` (pink+red), `gold`
+(orange+amber+yellow+chartreuse — everything from tan to yellow), `green`
+(green+emerald), `cyan` (cyan+azure), `blue` (blue+indigo), `magenta`
+(violet+magenta). On the measured folder that gives 724 / 486 / 14 / 76 / 239 /
+14, and the warm run that used to split is now one ramp.
+
+Green, cyan and blue are deliberately **not** merged. Fitting bands to the
+folder's own density lumped all three into a single 152° block ordered only by
+lightness, which buried the greens and cyans inside the blues — visibly worse
+on a contact sheet, and the reason "fit to this folder" is not the default.
+
 ### Numbering files
 
 Ticked criteria are applied top to bottom: the first is the primary sort, the
@@ -208,8 +314,37 @@ Separators are hyphens inside the prefix and an underscore only at the boundary
 with your filename, so the original stays unambiguous to strip. It is also
 written to `colorxbridge:originalName`, so **Undo rename** is exact.
 
-Defaults are **coarse grouping, chroma unticked, smoothing on** — measured as
-the smoothest combination on a real 1,559-image folder.
+Defaults are **colour-family hue groups, coarse grouping, chroma unticked,
+smoothing on** — measured as the smoothest combination on a real 1,559-image
+folder, and confirmed on a contact sheet.
+
+> **Renaming is scoped to the folder Bridge is showing.** Results accumulate
+> across runs, which is right for the list and catastrophic for anything that
+> renames: **Number files** and **Undo rename** used to operate on every file
+> analysed in the session, so analysing one folder, navigating to another and
+> pressing Undo silently renamed files in both. Both now narrow to the open
+> folder, the confirmation names it, and anything left out is stated. It was
+> found by a test harness doing exactly that to a real folder.
+
+### Lightness means the picture, not the swatch
+
+The lightness criterion reads the **whole image** — the palette-weighted mean —
+not the lightness of the representative colour.
+
+They are not the same thing, and the difference is not small. On the measured
+folder the representative swatch's lightness disagrees with the image's by
+**14 points on average**, and by more than 20 points for a quarter of the
+library. The worst case was a bright tile, mean lightness 73, whose
+representative was a near-black blue accent at L 21 — so it sorted into the
+dark end of the blue ramp, where it read as noise.
+
+The eye judges a thumbnail by the whole tile, so the ramp has to be built on
+the whole tile. Ordering on it cut the mean lightness step between neighbours
+from **8.16 to 0.34**.
+
+(The sibling project Nino keeps `meanLightness`, `dominantLightness` and
+`representativeLightness` as three separate sort axes, which is the more
+honest framing: each keeps meaning exactly what it says.)
 
 ### Which colour represents an image
 
@@ -226,7 +361,8 @@ the smoothest combination on a real 1,559-image folder.
 - **Sort** — applies the chosen order to the list. **⇅** reverses it (an exact
   mirror, including tied items).
 - **Select these in Bridge** — selects everything currently listed, so a colour
-  range picked here becomes a real selection in Bridge you can act on.
+  range picked here becomes a real selection in Bridge you can act on. Not
+  truncated: 1,559 files select in about 3.5 seconds.
 - **Click any row** — selects that one file in Bridge and scrolls to it. This is
   how the panel's ordering stays useful without reordering the grid: sort by
   hue, then step down the list.
@@ -262,6 +398,62 @@ End to end inside Adobe Bridge 2026, driven through the panel's own button:
   `dc:subject=[Colour: Red]`, `[Colour: Green]`, `[Colour: Magenta]` — which is
   the data the Filter panel indexes.
 - The PNGs remain valid images after the XMP is embedded.
+
+---
+
+## Where the time actually goes
+
+Measured in the panel over CEP remote debugging, on the 1,559-image folder
+(20-core machine) and on a 400-image fixture folder for anything destructive.
+
+| Step | Cost | Per file |
+|---|---|---|
+| Read saved colour data for 1,559 files | **4.8 s** | 3 ms |
+| Analyse (decode + cluster) | — | **41 ms** |
+| Write XMP + keywords, 400 files | **457 ms** | **1.1 ms** |
+| Number files, names already recorded | **396 ms** / 400 | 1 ms |
+| Number files, first time | 1.8 s / 400 | 4.5 ms |
+| Undo rename | **379 ms** / 400 | 0.9 ms |
+| Select 1,559 in Bridge | 3.6 s | 2.3 ms |
+
+Two results are worth stating plainly because they contradict what was assumed:
+
+**The XMP write is not the slow step.** It costs about 1.1 ms per file — under
+two seconds for the whole 1,559-image folder. Analysis is ~40× more expensive.
+
+**Analysis concurrency does not matter.** It is fixed at 4 in `analyzeAll`, and
+that number was never tuned — but tuning it achieves nothing. Concurrency 1, 2,
+4, 8, 12, 16 and 20 all land within noise of each other at ~41 ms per image,
+because almost none of the work is concurrent: reading the file, building the
+Blob, `drawImage`, `getImageData` and the clustering all run on the panel's
+single JS thread. Only Chromium's own decode is off-thread, and it is a small
+share of the 25 ms "decode" figure.
+
+So the remaining lever is not the dial — it is **Web Workers**. Nineteen of
+twenty cores are idle during analysis. Moving decode and clustering into
+workers is the change that would matter, and it changes no arithmetic.
+
+### What did help
+
+Clustering was rewritten from an array of `[L,a,b]` arrays onto flat
+`Float64Array`s. A 160×160 sample is 25,600 pixels, so the old shape allocated
+25,600 three-element arrays per image and chased a pointer for every distance
+computation. Same arithmetic, same seed, same order — **bit-identical
+palettes**, verified two ways: against a golden fixture in the test suite, and
+against the palettes already embedded in the real folder by the previous
+version (8/8 identical). Clustering went from 21.2 ms to 17.9 ms per image,
+and the whole analysis from 48 ms to 41 ms.
+
+Renaming a folder that has been numbered before dropped from 1.8 s to 396 ms
+per 400 files, because recording the original filename now probes read-only
+first. Opening a file `OPEN_FOR_UPDATE` and closing it `CLOSE_UPDATE_SAFELY`
+rewrites the whole file; on a re-run the name is already stored, so every one
+of those rewrites was wasted.
+
+Numbering twice is now a no-op. It used to re-rename a third of the folder,
+because ties in the sort broke on the current filename — which the first
+numbering run had just changed. Ties now break on the original name, which
+does not move.
 
 ---
 
