@@ -54,7 +54,7 @@ rather than a silent success.
 cd Bridge-Extension && npm test
 ```
 
-168 tests, no dependencies — `node --test` and nothing else. They run without
+179 tests, no dependencies — `node --test` and nothing else. They run without
 Bridge, without Chromium and without network, in under a second.
 
 They cover the colour engine (the composition claims below are executable, not
@@ -479,6 +479,34 @@ changes nothing.
 So this is a fidelity improvement that happens to be 9× faster. It does mean a
 library analysed by the old path should be re-analysed once, or it will hold
 two subtly different kinds of palette.
+
+### Reclaiming the space XMP writes leave behind
+
+Writing XMP closes the file with `CLOSE_UPDATE_SAFELY`, which rewrites it
+rather than editing in place. Do that over a folder a few times and the files
+end up occupying more disk **blocks** than they contain. Measured on the
+1,559-image folder after several passes: 3.17 GB of content sitting in 3.92 GB
+of allocation — **31% slack, 0.75 GB of it**. Nothing is wrong with the files;
+a plain `cp` of one allocates exactly its size.
+
+```bash
+node scripts/compact.js "/path/to/folder"           # report only
+node scripts/compact.js "/path/to/folder" --apply   # rewrite them
+```
+
+It reclaimed the full 0.75 GB in under six seconds, with slack going from 31%
+to 0.1%. **Content is never altered** — every byte is preserved, including the
+embedded XMP, so `colorxbridge:originalName` survives and Undo stays exact.
+
+Each file is hashed, copied to a temp file in the same directory, re-read and
+hashed again, given back its original timestamps, and only then renamed over
+the original. The rename is the sole destructive step and it is atomic, so an
+interruption leaves either the intact original or a complete replacement —
+never a truncated file. A copy that does not match byte for byte is abandoned
+and the original left alone.
+
+Close Bridge, or navigate away from the folder, before running it with
+`--apply`.
 
 ### What did help
 

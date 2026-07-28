@@ -15,7 +15,8 @@
     "disable-cep": "node scripts/enable-cep.js --disable",
     "status": "node scripts/install.js --status",
     "icons": "node scripts/generate-icons.js",
-    "fixtures": "node scripts/make-fixtures.js"
+    "fixtures": "node scripts/make-fixtures.js",
+    "compact": "node scripts/compact.js"
   },
   "engines": {
     "node": ">=18.0.0"
