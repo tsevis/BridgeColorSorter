@@ -7,6 +7,12 @@ reds sit with reds, golds with golds, and each block runs smoothly from dark to
 light. It is built for people with thousands of images and no way to see the
 shape of what they have.
 
+![Adobe Bridge showing 1,559 images in colour order](documents/assets/Bridge.png)
+
+*1,559 images, sorted. Bridge is on **Sort by Filename** — the order lives in
+the filenames, because that is the only ordering Bridge lets you control. Reds
+ramp dark to light, then hand over to the golds.*
+
 ---
 
 ## Contents
@@ -232,6 +238,11 @@ seconds. **No ordering change ships here without one.**
 
 ## User's guide
 
+![The BridgeColorShorter panel](documents/assets/BridgeColorShorter.png)
+
+*The panel. Everything between the header and the status line scrolls, so the
+controls stay reachable however short you drag it.*
+
 ### Getting started
 
 1. In Bridge, open the folder you want to sort.
@@ -368,7 +379,38 @@ extensions. Fine on your own machine; prefer the `.zxp` for anyone else.
 
 ### Requirements
 
-Adobe Bridge 2026 (16.x) on macOS. Bridge's CEP host code is `KBRG`.
+Adobe Bridge 2026 (16.x). Bridge's CEP host code is `KBRG`.
+
+### Windows
+
+**Developed and tested only on macOS.** Everything below is from reading the
+code, not from running it on Windows — treat it as a starting point, not a
+promise.
+
+What should work unchanged: the panel itself, the ordering, the XMP read and
+write, keywords, renaming and Undo, the worker pool, and the signed `.zxp`.
+None of that touches anything platform-specific, and the installer already
+knows about `%APPDATA%\Adobe\CEP\extensions`.
+
+Two things will not:
+
+- **Camera raw, PSD, TIFF and HEIC will fail to analyse.** Those formats are
+  transcoded through `/usr/bin/sips`, which is macOS-only. JPEG, PNG, GIF,
+  WebP, BMP and AVIF decode natively in Chromium and are unaffected — so on
+  Windows the panel works fully for ordinary web formats and reports an error
+  per raw file. Fixing it means swapping `sips` for a Windows equivalent
+  (ImageMagick, or Bridge's own thumbnail service).
+- **`scripts/compact.js` refuses to run.** Windows does not report allocated
+  blocks, so it cannot tell which files have slack. It says so and exits rather
+  than guessing.
+
+Also worth knowing: installing *from source* on Windows will copy the files but
+not enable `PlayerDebugMode`, which lives in the registry there rather than in
+`defaults`. Use the signed `.zxp`, which needs no debug flag on either platform.
+
+If you try it on Windows, the interesting question is whether `KBRG` and the
+CEP version match — `scripts/enable-cep.js` currently covers CEP 8–11, and
+Bridge 2026 uses CEP 12.
 
 ---
 
@@ -440,5 +482,3 @@ compared character-for-character by a test — they drifted apart once already.
 project's former name on purpose. It identifies data already embedded in real
 files, including the original filenames Undo depends on. Renaming it would
 orphan every palette ever written. A namespace is an identifier, not a brand.
-
-See `documents/` for the working notes this was built from.

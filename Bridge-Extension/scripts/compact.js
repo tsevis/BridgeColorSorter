@@ -53,6 +53,15 @@ if (!dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
   process.exit(1);
 }
 
+// Windows does not report allocated blocks, so every figure below would be NaN
+// and every file would look like it needed rewriting. Refuse rather than
+// silently rewrite a whole folder on a measurement that does not exist.
+if (typeof fs.statSync(dir).blocks !== 'number') {
+  console.error('This platform does not report allocated blocks, so there is ' +
+    'no way to tell\nwhich files have slack. Not supported here.');
+  process.exit(1);
+}
+
 const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 /** Allocated bytes, from 512-byte blocks. */
 const allocated = (p) => fs.statSync(p).blocks * 512;
