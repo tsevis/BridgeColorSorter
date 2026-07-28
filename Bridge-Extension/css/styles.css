@@ -10,6 +10,9 @@
   --cxb-accent: #2d8ceb;
   --cxb-ok: #4caf72;
   --cxb-error: #e5714f;
+  --cxb-scroll: #565656;
+  --cxb-scroll-hover: #6e6e6e;
+  --cxb-radius: 5px;
 }
 
 :root[data-theme="light"] {
@@ -18,6 +21,8 @@
   --cxb-border: #cfcfcf;
   --cxb-text: #1d1d1d;
   --cxb-text-dim: #666;
+  --cxb-scroll: #b8b8b8;
+  --cxb-scroll-hover: #9a9a9a;
 }
 
 * { box-sizing: border-box; }
@@ -36,8 +41,47 @@ html, body {
   flex-direction: column;
   height: 100%;
   padding: 10px;
-  gap: 10px;
+  gap: 9px;
+  min-height: 0;
 }
+
+/* ---------- scrolling ----------
+
+   The panel used to be overflow:hidden throughout. Bridge lets a panel be
+   dragged down to 320px, and at that height most of the controls were simply
+   unreachable - no scrollbar, no indication anything was below the fold. The
+   header and the status line stay put; everything between them scrolls. */
+
+.scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  /* Leave room for the scrollbar so content does not shift when it appears. */
+  padding-right: 2px;
+}
+
+/* CEF hides scrollbars until they are used and draws them very faint on a
+   dark background. Made explicit: a list of 1,559 rows needs a visible
+   indication of where you are in it. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+::-webkit-scrollbar-thumb {
+  background: var(--cxb-scroll);
+  border-radius: 5px;
+  /* The border becomes padding around the thumb, so it reads as a slim bar
+     rather than filling the gutter. */
+  border: 3px solid var(--cxb-bg);
+}
+
+::-webkit-scrollbar-thumb:hover { background: var(--cxb-scroll-hover); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+.results::-webkit-scrollbar-thumb { border-color: var(--cxb-surface-2); }
 
 /* ---------- header ---------- */
 
@@ -47,6 +91,8 @@ html, body {
   justify-content: space-between;
   gap: 8px;
   flex: 0 0 auto;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--cxb-border);
 }
 
 .header h1 {
@@ -71,10 +117,22 @@ html, body {
   color: var(--cxb-text);
   font: inherit;
   cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
 }
 
-.btn:hover { border-color: var(--cxb-accent); }
+.btn:hover { border-color: var(--cxb-accent); background: var(--cxb-border); }
 .btn:active { transform: translateY(1px); }
+
+/* Keyboard users could not see where they were at all. */
+.btn:focus-visible,
+.select:focus-visible,
+.dir:focus-visible,
+.link:focus-visible,
+input:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--cxb-accent);
+  outline-offset: 1px;
+}
 
 .btn-primary {
   background: var(--cxb-accent);
@@ -83,7 +141,18 @@ html, body {
   font-weight: 600;
 }
 
+.btn-primary:hover { background: #3f9bf5; border-color: #3f9bf5; }
+
 .btn-small { flex: 0 0 auto; padding: 4px 10px; }
+
+/* While a run is in flight the buttons did nothing and said nothing - a click
+   on Analyse during an analysis looked like the panel had frozen. */
+.is-busy .actions .btn,
+.is-busy .actions-grid .btn,
+.is-busy .sort-row .btn {
+  opacity: 0.45;
+  pointer-events: none;
+}
 
 .link {
   border: 0;
@@ -102,13 +171,20 @@ html, body {
 .block {
   background: var(--cxb-surface-2);
   border: 1px solid var(--cxb-border);
-  border-radius: 5px;
-  padding: 8px;
+  border-radius: var(--cxb-radius);
+  padding: 9px 10px;
   flex: 0 0 auto;
   min-height: 0;
 }
 
-.block.grow { flex: 1 1 auto; display: flex; flex-direction: column; }
+.block.grow { display: flex; flex-direction: column; }
+
+.block-head {
+  position: sticky;
+  top: 0;
+  background: var(--cxb-surface-2);
+  z-index: 1;
+}
 
 .block-head {
   display: flex;
@@ -186,15 +262,17 @@ html, body {
 
 .swatch {
   position: relative;
-  width: 34px;
-  height: 26px;
-  border: 1px solid var(--cxb-border);
-  border-radius: 3px;
+  width: 36px;
+  height: 28px;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
   cursor: pointer;
   padding: 0;
+  transition: transform 0.1s;
 }
 
-.swatch:hover { outline: 1px solid var(--cxb-text-dim); }
+.swatch:hover { transform: translateY(-1px); }
 
 .swatch.active {
   outline: 2px solid var(--cxb-accent);
@@ -213,24 +291,37 @@ html, body {
 
 /* ---------- results ---------- */
 
-.results { overflow-y: auto; flex: 1 1 auto; min-height: 60px; }
+/* Bounded rather than flex-grow. The list can hold 1,559 rows, and letting it
+   fill the panel left no room for anything else; a fixed window keeps the
+   controls above it reachable and gives the rows their own scrollbar. */
+.results {
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 140px;
+  max-height: 42vh;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
 
 .result {
-  padding: 5px 6px;
+  padding: 6px;
   border-radius: 4px;
   cursor: pointer;
   border: 1px solid transparent;
+  transition: background 0.1s;
 }
 
 .result:hover { background: var(--cxb-surface); border-color: var(--cxb-border); }
+.result:active { background: var(--cxb-border); }
 
-.result-top { display: flex; align-items: center; gap: 6px; }
+.result-top { display: flex; align-items: center; gap: 7px; }
 
 .chip {
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
-  border: 1px solid var(--cxb-border);
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
   flex: 0 0 auto;
 }
 
@@ -244,22 +335,28 @@ html, body {
 .result-meta {
   color: var(--cxb-text-dim);
   font-size: 10px;
-  margin: 2px 0 3px 20px;
+  margin: 3px 0 4px 25px;
+  font-variant-numeric: tabular-nums;
 }
 
-.strip { display: flex; gap: 2px; margin-left: 20px; }
-
-.strip i {
-  display: block;
-  height: 5px;
-  flex: 1;
-  border-radius: 1px;
+/* The palette is the most informative thing in a row, so it gets real height
+   and reads as one continuous bar rather than five separate ticks. */
+.strip {
+  display: flex;
+  margin-left: 25px;
+  height: 8px;
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
 }
+
+.strip i { display: block; height: 100%; flex: 1; }
 
 .placeholder {
   color: var(--cxb-text-dim);
   font-style: italic;
-  padding: 8px 2px;
+  padding: 14px 4px;
+  text-align: center;
 }
 
 /* ---------- settings ---------- */
@@ -293,12 +390,36 @@ summary {
 .footer {
   flex: 0 0 auto;
   border-top: 1px solid var(--cxb-border);
-  padding-top: 6px;
+  padding-top: 7px;
+  /* A long error must not push the panel about or get clipped to one line. */
+  max-height: 4.6em;
+  overflow-y: auto;
 }
 
-.status { font-size: 10px; color: var(--cxb-text-dim); }
+.status {
+  font-size: 10px;
+  color: var(--cxb-text-dim);
+  display: block;
+  padding-left: 12px;
+  position: relative;
+}
+
+/* A coloured dot, so state is legible before the words are read. */
+.status::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.42em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cxb-text-dim);
+}
+
 .status.ok { color: var(--cxb-ok); }
+.status.ok::before { background: var(--cxb-ok); }
 .status.error { color: var(--cxb-error); }
+.status.error::before { background: var(--cxb-error); }
 
 /* ---------- sort criteria ---------- */
 

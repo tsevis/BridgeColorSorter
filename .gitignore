@@ -13,3 +13,9 @@ macOS-App/dist/
 
 # CEP remote-debugging config - opens a DevTools port, never ship it
 .debug
+
+# Build output
+Bridge-Extension/dist/
+*.zxp
+cert.p12
+Bridge-Extension/ZXPSignCmd

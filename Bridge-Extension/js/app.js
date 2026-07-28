@@ -72,6 +72,18 @@
     el.className = 'status ' + (kind || '');
   }
 
+  /**
+   * Mark a run as in flight, in the DOM as well as in state.
+   *
+   * The flag alone only made the buttons ignore clicks. Pressing Analyse
+   * during an analysis then looked exactly like the panel having frozen, so
+   * the CSS now dims the actions while one is running.
+   */
+  function setBusy(busy) {
+    state.busy = busy;
+    if (document.body) document.body.classList.toggle('is-busy', busy);
+  }
+
   function setProgress(done, total) {
     var wrap = $('progressSection');
     var fill = $('progressFill');
@@ -355,7 +367,7 @@
 
   function run(which) {
     if (state.busy) return;
-    state.busy = true;
+    setBusy(true);
     setStatus('Asking Bridge for files…');
 
     collectFiles(which)
@@ -449,7 +461,7 @@
         setStatus(err.message, 'error');
       })
       .then(function () {
-        state.busy = false;
+        setBusy(false);
         setProgress(0, 0);
       });
   }

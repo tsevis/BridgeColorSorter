@@ -1,268 +1,235 @@
+#!/usr/bin/env node
 /**
- * BridgeColorShorter Build Script
- * Packages the extension for distribution
- * 
- * Usage:
- *   node scripts/build.js              - Build unsigned extension
- *   node scripts/build.js --zxp        - Create ZXP (requires ZXPSignCmd)
- *   node scripts/build.js --clean      - Clean build output
+ * Package BridgeColorShorter for distribution.
+ *
+ *   node scripts/build.js            stage a validated package in dist/
+ *   node scripts/build.js --zxp      stage, then sign it into a .zxp
+ *   node scripts/build.js --clean    remove dist/
+ *
+ * Signing needs Adobe's ZXPSignCmd. Point at it with ZXP_SIGN_CMD, or install
+ * the wrapper (`npm i -g zxp-sign-cmd`) and this will find it. A self-signed
+ * certificate is enough to make the package installable — see --make-cert.
+ *
+ * ---------------------------------------------------------------------------
+ * This script was rewritten because the original could not have worked.
+ *
+ * It copied `manifest.xml` from the extension root — which is fault #2 from
+ * the README, the one that cost this project months: CEP only ever reads
+ * `<extension>/CSXS/manifest.xml`. Worse, its directory list was
+ * ['css', 'js', 'assets'], so `CSXS/` and `jsx/` were not copied at all. The
+ * package it produced had no manifest and no host script.
+ *
+ * And it *warned and skipped* on anything missing, so it would have reported a
+ * successful build of an extension that could never load. That is the exact
+ * shape of the original installer bug — a tool checking its own wrong
+ * assumption and printing a tick. Everything here fails loudly instead.
  */
+
+'use strict';
 
 const fs = require('fs');
 const path = require('path');
-const { execSync, spawnSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
-// Configuration
-const PROJECT_ROOT = path.join(__dirname, '..');
-const OUTPUT_DIR = path.join(PROJECT_ROOT, 'dist');
-const ZXP_OUTPUT = path.join(PROJECT_ROOT, 'BridgeColorShorter.zxp');
-const EXTENSION_ID = 'com.bridgecolorshorter.panel';
+const ROOT = path.join(__dirname, '..');
+const OUTPUT_DIR = path.join(ROOT, 'dist');
+const NAME = 'BridgeColorShorter';
+const ZXP_OUTPUT = path.join(ROOT, `${NAME}.zxp`);
 
-// Files to include in the build
-const FILES_TO_COPY = [
-  'manifest.xml',
-  'index.html',
-  'package.json'
-];
+/**
+ * Exactly what the installer copies. Kept identical on purpose: a package that
+ * differs from what is known to work in Bridge is a package nobody has tested.
+ */
+const PAYLOAD = ['CSXS', 'index.html', 'css', 'js', 'jsx', 'assets'];
 
-const DIRS_TO_COPY = [
-  'css',
-  'js',
-  'assets'
-];
+/** Never ship these, whatever they are next to. */
+const SKIP = new Set(['.DS_Store', 'Thumbs.db', 'node_modules', '.git', '.debug']);
 
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
+function log(message) { console.log('[build]', message); }
 
-function log(message) {
-  console.log('[Build]', message);
+function fail(message) {
+  console.error('\n[build] ERROR: ' + message + '\n');
+  process.exit(1);
 }
 
-function error(message) {
-  console.error('[Build] ERROR:', message);
-}
+// ---------------------------------------------------------------------------
+// Copy
+// ---------------------------------------------------------------------------
 
-function clean() {
-  log('Cleaning output directory...');
-  if (fs.existsSync(OUTPUT_DIR)) {
-    fs.rmSync(OUTPUT_DIR, { recursive: true, force: true });
+function copyTree(src, dest) {
+  const stat = fs.statSync(src);
+
+  if (stat.isDirectory()) {
+    fs.mkdirSync(dest, { recursive: true });
+    for (const entry of fs.readdirSync(src)) {
+      if (SKIP.has(entry)) continue;
+      copyTree(path.join(src, entry), path.join(dest, entry));
+    }
+    return;
   }
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(src, dest);
+}
+
+function stage() {
+  fs.rmSync(OUTPUT_DIR, { recursive: true, force: true });
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+
+  for (const entry of PAYLOAD) {
+    const src = path.join(ROOT, entry);
+    if (!fs.existsSync(src)) fail(`missing from the source tree: ${entry}`);
+    copyTree(src, path.join(OUTPUT_DIR, entry));
+  }
+  log(`staged ${PAYLOAD.length} items in dist/`);
 }
 
-function copyFile(src, dest) {
-  const srcPath = path.join(PROJECT_ROOT, src);
-  const destPath = path.join(OUTPUT_DIR, dest);
-  
-  if (fs.existsSync(srcPath)) {
-    fs.mkdirSync(path.dirname(destPath), { recursive: true });
-    fs.copyFileSync(srcPath, destPath);
-    log(`  Copied: ${src}`);
-    return true;
-  } else {
-    log(`  Warning: ${src} not found, skipping`);
-    return false;
+// ---------------------------------------------------------------------------
+// Validate what was staged, not what was intended
+// ---------------------------------------------------------------------------
+
+function validate() {
+  const manifestPath = path.join(OUTPUT_DIR, 'CSXS', 'manifest.xml');
+
+  if (!fs.existsSync(manifestPath)) {
+    fail('dist/CSXS/manifest.xml is missing.\n' +
+      'CEP reads the manifest from CSXS/ and nowhere else, so a package ' +
+      'without it installs and then silently never loads.');
   }
+
+  const xml = fs.readFileSync(manifestPath, 'utf8');
+
+  if (!/Host\s+Name="KBRG"/.test(xml)) {
+    fail('the manifest does not declare Host Name="KBRG".\n' +
+      "Adobe Bridge's CEP host code is KBRG; anything else matches no Adobe " +
+      'application.');
+  }
+
+  // The host script the manifest points at must actually be in the package.
+  const scriptPath = (xml.match(/<ScriptPath>\.?\/?([^<]+)<\/ScriptPath>/) || [])[1];
+  if (!scriptPath) fail('the manifest declares no <ScriptPath>.');
+  if (!fs.existsSync(path.join(OUTPUT_DIR, scriptPath))) {
+    fail(`the manifest points at ${scriptPath}, which is not in the package.`);
+  }
+
+  const mainPath = (xml.match(/<MainPath>\.?\/?([^<]+)<\/MainPath>/) || [])[1];
+  if (!mainPath) fail('the manifest declares no <MainPath>.');
+  if (!fs.existsSync(path.join(OUTPUT_DIR, mainPath))) {
+    fail(`the manifest points at ${mainPath}, which is not in the package.`);
+  }
+
+  // Every <script src> the panel loads has to be there too, or the panel opens
+  // to a blank rectangle.
+  const html = fs.readFileSync(path.join(OUTPUT_DIR, mainPath), 'utf8');
+  const missing = [];
+  const re = /<script src="([^"]+)"/g;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    if (!fs.existsSync(path.join(OUTPUT_DIR, m[1]))) missing.push(m[1]);
+  }
+  if (missing.length) fail('scripts referenced but not packaged: ' + missing.join(', '));
+
+  if (fs.existsSync(path.join(OUTPUT_DIR, '.debug'))) {
+    fail('.debug is in the package. It opens a remote debugging port and must ' +
+      'never ship.');
+  }
+
+  const bundleId = (xml.match(/ExtensionBundleId="([^"]+)"/) || [])[1];
+  const version = (xml.match(/ExtensionBundleVersion="([^"]+)"/) || [])[1];
+  log(`validated: ${bundleId} v${version}, host script ${scriptPath}`);
+  return { bundleId, version };
 }
 
-function copyDir(src, dest) {
-  const srcPath = path.join(PROJECT_ROOT, src);
-  const destPath = path.join(OUTPUT_DIR, dest);
-  
-  if (!fs.existsSync(srcPath)) {
-    log(`  Warning: ${src}/ not found, skipping`);
-    return false;
-  }
-  
-  if (!fs.existsSync(destPath)) {
-    fs.mkdirSync(destPath, { recursive: true });
-  }
-  
-  const entries = fs.readdirSync(srcPath, { withFileTypes: true });
-  
-  for (const entry of entries) {
-    const entrySrc = path.join(src, entry.name);
-    const entryDest = path.join(dest, entry.name);
-    
-    // Skip excluded files
-    if (entry.name === '.DS_Store' || entry.name === 'Thumbs.db') {
-      continue;
-    }
-    
-    if (entry.isDirectory()) {
-      copyDir(entrySrc, entryDest);
-    } else {
-      copyFile(entrySrc, entryDest);
-    }
-  }
-  
-  return true;
-}
+// ---------------------------------------------------------------------------
+// Signing
+// ---------------------------------------------------------------------------
 
-function copyFiles() {
-  log('Copying files to output directory...');
-  
-  FILES_TO_COPY.forEach(file => copyFile(file, file));
-  DIRS_TO_COPY.forEach(dir => copyDir(dir, dir));
-  
-  log(`Files copied to: ${OUTPUT_DIR}`);
-}
-
-function createZXP() {
-  log('Creating ZXP package...');
-  
-  // Check for ZXPSignCmd
-  let signCmd = null;
-  const possiblePaths = [
+function findSignCmd() {
+  if (process.env.ZXP_SIGN_CMD && fs.existsSync(process.env.ZXP_SIGN_CMD)) {
+    return process.env.ZXP_SIGN_CMD;
+  }
+  const candidates = [
     '/Applications/Adobe CEP Extensions/CEP/CEPExtras/ZXPSignCmd',
     '/Applications/Adobe Extension Manager CC/ZXPSignCmd',
-    'C:\\Program Files\\Adobe\\Adobe Extension Manager CC\\ZXPSignCmd.exe',
-    './ZXPSignCmd',
-    './node_modules/.bin/zxp-sign-cmd'
+    path.join(ROOT, 'ZXPSignCmd'),
+    path.join(ROOT, 'node_modules', 'zxp-sign-cmd', 'bin', 'ZXPSignCmd')
   ];
-  
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      signCmd = p;
-      break;
-    }
+  return candidates.find((p) => fs.existsSync(p)) || null;
+}
+
+const CERT = path.join(ROOT, 'cert.p12');
+
+function makeCert(signCmd) {
+  const password = process.env.ZXP_PASSWORD;
+  if (!password) fail('set ZXP_PASSWORD to the password for the new certificate.');
+
+  execFileSync(signCmd, [
+    '-selfSignedCert', 'GR', 'Attica',
+    process.env.ZXP_ORG || 'BridgeColorShorter',
+    process.env.ZXP_CERT_ID || 'BridgeColorShorter',
+    password, CERT
+  ], { stdio: 'inherit' });
+
+  log(`self-signed certificate written to ${CERT}`);
+  log('It identifies you as the publisher. Keep it (and its password) if you');
+  log('want future versions to be recognised as the same publisher.');
+}
+
+function sign(signCmd) {
+  const password = process.env.ZXP_PASSWORD;
+  if (!password) fail('set ZXP_PASSWORD to the certificate password.');
+  if (!fs.existsSync(CERT)) {
+    fail(`no certificate at ${CERT}. Create one with:\n` +
+      '  ZXP_PASSWORD=... node scripts/build.js --make-cert');
   }
-  
-  if (!signCmd) {
-    log('ZXPSignCmd not found. Creating unsigned package.');
-    log('To sign the extension:');
-    log('  1. Download ZXPSignCmd from: https://github.com/Adobe-CEP/Sample-Extensions/tree/master/ZXPSignCmd');
-    log('  2. Run: ZXPSignCmd -sign dist BridgeColorShorter.zxp -certId "YourName" -password "YourPassword"');
-    
-    // Create a simple zip as placeholder
-    createZip();
-    return false;
-  }
-  
-  // Sign and create ZXP
-  const certId = process.env.ZXP_CERT_ID || 'BridgeColorShorter';
-  const password = process.env.ZXP_PASSWORD || '';
-  
-  const args = ['-sign', OUTPUT_DIR, ZXP_OUTPUT];
-  
-  if (password) {
-    args.push('-certId', certId, '-password', password);
-  }
-  
+
+  fs.rmSync(ZXP_OUTPUT, { force: true });
+  execFileSync(signCmd, ['-sign', OUTPUT_DIR, ZXP_OUTPUT, CERT, password, '-tsa',
+    'http://timestamp.digicert.com'], { stdio: 'inherit' });
+
+  if (!fs.existsSync(ZXP_OUTPUT)) fail('signing reported success but produced no file.');
+
+  const size = (fs.statSync(ZXP_OUTPUT).size / 1024).toFixed(0);
+  log(`signed: ${ZXP_OUTPUT} (${size} KB)`);
+}
+
+function verify(signCmd) {
   try {
-    execSync(`"${signCmd}" ${args.join(' ')}`, { stdio: 'inherit' });
-    log(`ZXP created: ${ZXP_OUTPUT}`);
-    return true;
+    execFileSync(signCmd, ['-verify', ZXP_OUTPUT, '-certinfo'], { stdio: 'inherit' });
   } catch (e) {
-    error('Failed to create ZXP:', e.message);
-    return false;
+    fail('the signed package does not verify.');
   }
 }
 
-function createZip() {
-  log('Creating ZIP package (unsigned)...');
-  
-  const zipPath = path.join(PROJECT_ROOT, 'BridgeColorShorter-unsigned.zip');
-  
-  try {
-    // Use system zip command
-    const cwd = OUTPUT_DIR;
-    const zipName = path.basename(zipPath);
-    const parentDir = path.dirname(zipPath);
-    
-    // Change to output dir and create zip
-    execSync(`zip -r "${zipName}" .`, { cwd: cwd, stdio: 'pipe' });
-    
-    // Move zip to project root
-    const tempZip = path.join(cwd, zipName);
-    if (fs.existsSync(tempZip)) {
-      fs.renameSync(tempZip, zipPath);
-      log(`ZIP created: ${zipPath}`);
-    }
-  } catch (e) {
-    // Fallback: just notify user
-    log('ZIP creation requires "zip" command. Manual packaging instructions:');
-    log(`  1. Navigate to: ${OUTPUT_DIR}`);
-    log('  2. Zip all files into BridgeColorShorter.zip');
-    log('  3. Rename to BridgeColorShorter.zxp (for testing)');
-  }
-}
-
-function showInstallInstructions() {
-  console.log('\n========================================');
-  console.log('  Installation Instructions');
-  console.log('========================================\n');
-  
-  console.log('Option 1: Manual Installation (Development)');
-  console.log('-------------------------------------------');
-  console.log('1. Enable CEP debugging:');
-  console.log('   macOS:   defaults write com.adobe.CSXS.11 PlayerDebugMode 1');
-  console.log('   Windows: reg add HKEY_CURRENT_USER\\Software\\Adobe\\CSXS.11 /v PlayerDebugMode /t REG_SZ /d 1');
-  console.log('   Or run: node scripts/enable-cep.js\n');
-  
-  console.log('2. Copy extension to CEP folder:');
-  console.log('   macOS:   ~/Library/Application Support/Adobe/CEP/extensions/');
-  console.log('   Windows: %APPDATA%\\Adobe\\CEP\\extensions\\');
-  console.log('   Or run: node scripts/install.js\n');
-  
-  console.log('3. Restart Adobe Bridge');
-  console.log('4. Open: Window > Extensions > BridgeColorShorter\n');
-  
-  console.log('Option 2: ZXP Installation (Production)');
-  console.log('---------------------------------------');
-  console.log('1. Install via Adobe Exchange or Extension Manager');
-  console.log('2. Or use ZXPSignCmd to sign and install\n');
-  
-  console.log('========================================');
-}
-
-// ============================================================================
-// MAIN BUILD PROCESS
-// ============================================================================
-
-function build(options) {
-  console.log('========================================');
-  console.log('  BridgeColorShorter Build Script');
-  console.log('  Version: 1.0.0');
-  console.log('========================================\n');
-  
-  try {
-    // Clean
-    if (options.clean || !fs.existsSync(OUTPUT_DIR)) {
-      clean();
-    }
-    
-    // Copy files
-    copyFiles();
-    
-    // Create ZXP/ZIP
-    if (options.zxp) {
-      createZXP();
-    } else {
-      createZip();
-    }
-    
-    // Show instructions
-    showInstallInstructions();
-    
-    console.log('\nBuild completed successfully!');
-    console.log('Output:', OUTPUT_DIR);
-    
-  } catch (e) {
-    error('Build failed:', e.message);
-    process.exit(1);
-  }
-}
-
-// ============================================================================
-// CLI PARSING
-// ============================================================================
+// ---------------------------------------------------------------------------
 
 const args = process.argv.slice(2);
-const options = {
-  zxp: args.includes('--zxp'),
-  clean: args.includes('--clean')
-};
 
-build(options);
+if (args.includes('--clean')) {
+  fs.rmSync(OUTPUT_DIR, { recursive: true, force: true });
+  log('cleaned dist/');
+  process.exit(0);
+}
+
+const signCmd = findSignCmd();
+
+if (args.includes('--make-cert')) {
+  if (!signCmd) fail('ZXPSignCmd not found. Set ZXP_SIGN_CMD to its path.');
+  makeCert(signCmd);
+  process.exit(0);
+}
+
+stage();
+validate();
+
+if (args.includes('--zxp')) {
+  if (!signCmd) {
+    fail('ZXPSignCmd not found, so no .zxp was produced.\n' +
+      'Get it from Adobe: https://github.com/Adobe-CEP/CEP-Resources\n' +
+      'then set ZXP_SIGN_CMD to its path.\n\n' +
+      'dist/ is staged and validated, so signing is the only step left.');
+  }
+  sign(signCmd);
+  verify(signCmd);
+} else {
+  log('dist/ is ready. Add --zxp to sign it.');
+}
