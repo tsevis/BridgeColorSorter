@@ -551,6 +551,18 @@
    * on the whole tile. Ordering on this instead cut the mean lightness step
    * between neighbours from 8.16 to 0.34.
    *
+   * Returned CONTINUOUS, not rounded. Rounding here made the ordering depend
+   * on where a value sat relative to an x.5 boundary, and the dominance stored
+   * in XMP carries only three decimals — so a file analysed fresh and the same
+   * file read back from its own cache could round to 36 and 37 and swap places.
+   * Measured on the 1,559-image folder: 598 files differed that way between a
+   * fresh analysis and a cached re-read, which meant the panel's list no longer
+   * matched the order its own filenames encoded.
+   *
+   * Everything that writes this into a filename goes through pad(), which
+   * rounds. So the sort is continuous and the displayed field is an integer,
+   * which is the right way round.
+   *
    * Cached on the record: it is read once per comparison in a sort.
    */
   function meanLightness(rec) {
@@ -566,7 +578,7 @@
     }
 
     rec._meanL = weight > 0
-      ? Math.round((sum / weight) * 100)
+      ? (sum / weight) * 100
       : lch(repOf(rec))[0];
     return rec._meanL;
   }
