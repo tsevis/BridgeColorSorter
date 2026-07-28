@@ -1118,15 +1118,31 @@
     Array.prototype.forEach.call(
       document.querySelectorAll('[data-dir]'), function (btn) {
         var key = btn.getAttribute('data-dir');
-        btn.textContent = state.criteria[key].desc ? '\u25BC' : '\u25B2';
+        label(btn, key);
         btn.addEventListener('click', function (ev) {
           ev.preventDefault();
           ev.stopPropagation();           // the button sits inside a <label>
           state.criteria[key].desc = !state.criteria[key].desc;
-          btn.textContent = state.criteria[key].desc ? '\u25BC' : '\u25B2';
+          label(btn, key);
           applySortQuietly();
         });
       });
+
+    /**
+     * Say what the direction actually means for this criterion. A bare
+     * triangle told the user nothing about what it would do.
+     */
+    function label(btn, key) {
+      var desc = state.criteria[key].desc;
+      var words = {
+        hue:       ['red to violet', 'violet to red'],
+        chroma:    ['dull to vivid', 'vivid to dull'],
+        lightness: ['dark to light', 'light to dark'],
+        dominance: ['weakest first', 'strongest first']
+      }[key] || ['ascending', 'descending'];
+
+      btn.textContent = (desc ? '\u2193 ' : '\u2191 ') + words[desc ? 1 : 0];
+    }
 
     var modeSelect = $('sortModeSelect');
     if (modeSelect) {

@@ -338,3 +338,65 @@ summary {
 
 .inline { display: flex; align-items: center; gap: 6px; flex: 1; font-size: 10px;
   color: var(--cxb-text-dim); }
+
+/* ---------- multi-column control rows ---------- */
+
+/* Controls used to sit one per row and crowd the panel. They now flow into
+   columns and wrap when the panel is narrow. */
+.fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.field-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 150px;
+  min-width: 130px;
+}
+
+.field-label {
+  font-size: 10px;
+  color: var(--cxb-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.field-col .select { flex: 1 1 auto; width: 100%; min-width: 0; }
+
+/* A checkbox that has to line up beside a labelled dropdown. */
+.field-col.checkline {
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 6px;
+  padding-bottom: 5px;
+}
+
+.actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.actions-grid .btn { flex: initial; width: 100%; }
+
+/* ---------- direction toggles ---------- */
+
+/* The bare triangle said nothing about what it controlled. It now carries its
+   own wording, so the row reads "Hue  ↑ red to violet". */
+.dir {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--cxb-text-dim);
+  padding: 2px 7px;
+}
+
+.dir:hover { border-color: var(--cxb-accent); color: var(--cxb-text); }
+.criterion-name { flex: 1; min-width: 0; }

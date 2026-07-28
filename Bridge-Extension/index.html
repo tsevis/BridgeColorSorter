@@ -26,8 +26,9 @@
       <div class="block-head">
         <h2>Order</h2>
       </div>
-      <div class="row">
-        <label class="inline">Order by
+      <div class="fields">
+        <label class="field-col">
+          <span class="field-label">Order by</span>
           <select id="sortModeSelect" class="select">
             <option value="criteria">Colour criteria</option>
             <option value="similarity">Whole-palette similarity</option>
@@ -45,60 +46,57 @@
         <label class="criterion">
           <input type="checkbox" data-criterion="hue" checked>
           <span class="criterion-name">Hue</span>
-          <button class="dir" data-dir="hue" title="Ascending / descending">▲</button>
+          <button class="dir" data-dir="hue" title="Click to reverse this criterion"></button>
         </label>
         <label class="criterion">
           <input type="checkbox" data-criterion="chroma">
           <span class="criterion-name">Chroma (saturation)</span>
-          <button class="dir" data-dir="chroma">▲</button>
+          <button class="dir" data-dir="chroma" title="Click to reverse this criterion"></button>
         </label>
         <label class="criterion">
           <input type="checkbox" data-criterion="lightness" checked>
           <span class="criterion-name">Lightness</span>
-          <button class="dir" data-dir="lightness">▲</button>
+          <button class="dir" data-dir="lightness" title="Click to reverse this criterion"></button>
         </label>
         <label class="criterion">
           <input type="checkbox" data-criterion="dominance">
           <span class="criterion-name">Dominance</span>
-          <button class="dir" data-dir="dominance">▼</button>
+          <button class="dir" data-dir="dominance" title="Click to reverse this criterion"></button>
         </label>
       </div>
 
-      <div class="row">
-        <label class="inline">Grouping
+      <div class="fields">
+        <label class="field-col">
+          <span class="field-label">Grouping</span>
           <select id="groupingSelect" class="select">
             <option value="fine">Fine</option>
             <option value="medium">Medium</option>
-            <option value="coarse">Coarse (recommended)</option>
+            <option value="coarse">Coarse</option>
           </select>
         </label>
-      </div>
-
-      <div class="row">
-        <label class="criterion" style="flex:1">
+        <label class="field-col checkline">
           <input type="checkbox" id="serpentineToggle" checked>
-          <span class="criterion-name">Smooth transitions between groups</span>
+          <span>Smooth transitions</span>
         </label>
       </div>
       </div>
 
-      <div class="row">
-        <label class="inline">Colour used
+      <div class="fields">
+        <label class="field-col">
+          <span class="field-label">Colour used</span>
           <select id="representativeSelect" class="select">
-            <option value="balanced">Balanced (recommended)</option>
+            <option value="balanced">Balanced</option>
             <option value="dominant">Dominant only</option>
             <option value="average">Average</option>
           </select>
         </label>
       </div>
 
-      <div class="row">
+      <div class="actions-grid">
         <button id="sortBtn" class="btn btn-small">Sort list</button>
         <button id="selectInBridgeBtn" class="btn btn-small">Select in Bridge</button>
-      </div>
-      <div class="row">
-        <button id="renameBtn" class="btn btn-primary btn-small">Number files for Bridge…</button>
-        <button id="undoRenameBtn" class="btn btn-small">Undo</button>
+        <button id="renameBtn" class="btn btn-primary btn-small">Number files…</button>
+        <button id="undoRenameBtn" class="btn btn-small">Undo rename</button>
       </div>
       <p id="renamePreview" class="note"></p>
       <p id="sortNote" class="note"></p>
