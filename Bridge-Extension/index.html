@@ -13,8 +13,8 @@
     </header>
 
     <section class="actions">
-      <button id="analyzeBtn" class="btn btn-primary">Analyse selection</button>
-      <button id="analyzeAllBtn" class="btn">Analyse whole folder</button>
+      <button id="analyzeBtn" class="btn btn-primary">Analyze selection</button>
+      <button id="analyzeAllBtn" class="btn">Analyze whole folder</button>
     </section>
 
     <section class="progress-section" id="progressSection" style="display:none">
@@ -32,7 +32,7 @@
         <label class="field-col">
           <span class="field-label">Order by</span>
           <select id="sortModeSelect" class="select">
-            <option value="criteria">Colour criteria</option>
+            <option value="criteria">Color criteria</option>
             <option value="similarity">Whole-palette similarity</option>
           </select>
         </label>
@@ -79,7 +79,7 @@
         <label class="field-col">
           <span class="field-label">Hue groups</span>
           <select id="hueBandsSelect" class="select">
-            <option value="family">Colour families</option>
+            <option value="family">Color families</option>
             <option value="fixed">Equal arcs</option>
             <option value="adaptive">Fit to this folder</option>
           </select>
@@ -93,7 +93,7 @@
 
       <div class="fields">
         <label class="field-col">
-          <span class="field-label">Colour used</span>
+          <span class="field-label">Color used</span>
           <select id="representativeSelect" class="select">
             <option value="balanced">Balanced</option>
             <option value="dominant">Dominant only</option>
@@ -118,11 +118,11 @@
 
     <section class="block">
       <div class="block-head">
-        <h2>Colours</h2>
+        <h2>Colors</h2>
         <button id="clearFilterBtn" class="link">clear</button>
       </div>
       <div id="colorSwatches" class="swatches">
-        <div class="placeholder">Analyse images to see colours</div>
+        <div class="placeholder">Analyze images to see colors</div>
       </div>
     </section>
 
@@ -141,20 +141,20 @@
         <summary>Settings</summary>
         <div class="settings">
           <label class="field">
-            <span>Colours per image</span>
+            <span>Colors per image</span>
             <input type="number" id="colorCountInput" min="2" max="12" value="5">
           </label>
           <label class="field checkbox">
             <input type="checkbox" id="writeXmpToggle" checked>
-            <span>Write colour data to XMP</span>
+            <span>Write color data to XMP</span>
           </label>
           <label class="field checkbox">
             <input type="checkbox" id="writeKeywordsToggle" checked>
-            <span>Add colour keywords (Filter panel)</span>
+            <span>Add color keywords (Filter panel)</span>
           </label>
           <label class="field checkbox">
-            <input type="checkbox" id="forceReanalyseToggle">
-            <span>Re-analyse, ignoring saved colour data</span>
+            <input type="checkbox" id="forceReanalyzeToggle">
+            <span>Re-analyze, ignoring saved color data</span>
           </label>
           <button id="resetBtn" class="btn btn-small">Clear results</button>
         </div>

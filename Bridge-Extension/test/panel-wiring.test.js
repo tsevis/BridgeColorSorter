@@ -22,12 +22,24 @@ const PANEL = read('js', 'app.js');
 const HTML = read('index.html');
 const README = read('..', 'README.md');
 
-/** Element ids app.js looks up. */
+/**
+ * Element ids app.js looks up.
+ *
+ * Both routes have to be scanned. Only checking `$('id')` let a real break
+ * through: a spelling pass renamed `forceReanalyseToggle` to
+ * `forceReanalyzeToggle` in the markup but not in app.js, and because that one
+ * is reached through `bindToggle('id', ...)` rather than `$('id')` directly,
+ * this test passed while the checkbox was dead.
+ */
 function wanted() {
   const ids = new Set();
-  const re = /\$\('([a-zA-Z][\w-]*)'\)/g;
-  let m;
-  while ((m = re.exec(PANEL)) !== null) ids.add(m[1]);
+  for (const re of [
+    /\$\('([a-zA-Z][\w-]*)'\)/g,          // $('someId')
+    /bindToggle\('([a-zA-Z][\w-]*)'/g     // bindToggle('someId', ...)
+  ]) {
+    let m;
+    while ((m = re.exec(PANEL)) !== null) ids.add(m[1]);
+  }
   return [...ids].sort();
 }
 

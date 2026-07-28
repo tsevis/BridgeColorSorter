@@ -2,7 +2,7 @@
  * BridgeColorShorter - ExtendScript host layer (runs inside Adobe Bridge)
  *
  * Everything the panel needs from Bridge itself lives here: the current
- * selection, XMP read/write, and the colour keywords that drive Bridge's
+ * selection, XMP read/write, and the color keywords that drive Bridge's
  * Filter panel.
  *
  * Communication with the CEP panel is string-based (evalScript returns a
@@ -25,7 +25,19 @@ var NS_DC = "http://purl.org/dc/elements/1.1/";
 var NS_LR = "http://ns.adobe.com/lightroom/1.0/";
 var NS_XMP = "http://ns.adobe.com/xap/1.0/";
 
-/** Keyword prefix, so our keywords are recognisable and removable. */
+/**
+ * Keyword prefix, so our keywords are recognisable and removable.
+ *
+ * Spelled the British way on purpose, and it must stay that way. This string
+ * is not display text: it is written into real files as `Colour: Red`, and
+ * pruneAndAppend() finds a previous run's keywords by matching this exact
+ * prefix. Changing it to "Color" would stop the old ones being found, so
+ * re-analysing a folder would leave every file carrying both `Colour: Red`
+ * and `Color: Red`.
+ *
+ * Same reasoning as the XMP namespace above: once a string is inside the
+ * user's files it is data, not branding.
+ */
 var CXB_KEYWORD_ROOT = "Colour";
 
 var CXB_IMAGE_EXTS = {
@@ -240,14 +252,14 @@ function cxbApplyProps(xmp, rec) {
 }
 
 /**
- * Write the colour family into the keywords Bridge indexes for its Filter
+ * Write the color family into the keywords Bridge indexes for its Filter
  * panel. Keywords are purely additive, so nothing of the user's is displaced.
  *
- * Previous BridgeColorShorter keywords are pruned first, so re-analysing a file
- * replaces its colour keyword instead of stacking another one.
+ * Previous BridgeColorShorter keywords are pruned first, so re-analyzing a file
+ * replaces its color keyword instead of stacking another one.
  *
  * Deliberately does NOT touch xmp:Label. A file carries exactly one label and
- * it belongs to the user's own triage (Select / Approved / Review); colour is a
+ * it belongs to the user's own triage (Select / Approved / Review); color is a
  * property of the image, not a decision about it, so the two must not share a
  * field.
  */
@@ -270,7 +282,7 @@ function cxbApplyNativeFields(xmp, rec, opts) {
       if (item === value) {
         alreadyPresent = true;
       } else if (item.indexOf(prefix) === 0) {
-        xmp.deleteArrayItem(ns, prop, i); // colour keyword from an earlier run
+        xmp.deleteArrayItem(ns, prop, i); // color keyword from an earlier run
       }
     }
 
@@ -325,7 +337,7 @@ function cxbSidecarPathFor(filePath) {
 }
 
 /**
- * Write one record's colour data to XMP.
+ * Write one record's color data to XMP.
  * Embedded XMP is preferred; formats that cannot carry it get a sidecar.
  */
 /**
@@ -438,7 +450,7 @@ function cxbApplyResults(jsonPath) {
 }
 
 /**
- * Read stored colour data for many files at once.
+ * Read stored color data for many files at once.
  *
  * Analysis is by far the slowest step - every image has to be decoded and
  * clustered - yet the result is already embedded in each file from the previous
@@ -508,16 +520,16 @@ function cxbReadColorBatch(jsonPath) {
 // criterion. SortCriterion exists but only carries a name plus one of those
 // built-in types.
 //
-// The only built-in field that could have carried a colour was xmp:Label, and
+// The only built-in field that could have carried a color was xmp:Label, and
 // writing to it would destroy the user's own triage state - a file has exactly
 // one label. That trade is not worth making, so BridgeColorShorter does not reorder
-// Bridge's grid at all. It writes colour keywords instead, which are additive
+// Bridge's grid at all. It writes color keywords instead, which are additive
 // and drive the Filter panel, and does its own ordering inside the panel.
 
 /**
  * Select a file in Bridge's content pane and scroll it into view.
  *
- * Bridge's grid cannot be reordered by colour, so this is how the panel's
+ * Bridge's grid cannot be reordered by color, so this is how the panel's
  * ordering stays useful: sort the list by hue here, then step through it and
  * Bridge follows along.
  */
@@ -674,11 +686,11 @@ function cxbSelectionCount() {
 }
 
 /**
- * Write xmp:Label so Bridge can group the grid by colour via Sort > By Label.
+ * Write xmp:Label so Bridge can group the grid by color via Sort > By Label.
  *
  * Bridge has five label slots and matches the stored string against the texts
  * configured in Preferences > Labels, so the caller supplies the exact text.
- * Files whose colour has no meaningful hue (greys, black, white) are cleared
+ * Files whose color has no meaningful hue (grays, black, white) are cleared
  * rather than forced into a slot.
  *
  * @param {string} jsonPath temp file holding [{filePath, labelText}, ...]
@@ -741,13 +753,13 @@ function cxbApplyLabels(jsonPath) {
 }
 
 //= ============================================================================
-// Numbering files so Bridge's grid follows the colour order
+// Numbering files so Bridge's grid follows the color order
 //= ============================================================================
 //
 // Bridge's Sort menu takes a fixed enum and offers no way to register a
 // criterion, and its manual ("user") order cannot be set from a script. The
 // filename is the only ordering Bridge exposes that can carry arbitrary data,
-// so the colour order is encoded into a zero-padded prefix and Bridge is
+// so the color order is encoded into a zero-padded prefix and Bridge is
 // switched to Sort > By Filename.
 //
 // The original name survives intact after the prefix, and is also written to
@@ -836,7 +848,7 @@ function cxbRenameSidecar(oldPath, newFileName) {
 }
 
 /**
- * Apply a colour-order prefix to each file.
+ * Apply a color-order prefix to each file.
  * @param {string} jsonPath temp file holding [{filePath, prefix}, ...]
  */
 function cxbApplyPrefixes(jsonPath) {
@@ -888,7 +900,7 @@ function cxbApplyPrefixes(jsonPath) {
       }
     }
 
-    // Filename order is now colour order, so point Bridge at it.
+    // Filename order is now color order, so point Bridge at it.
     var sortError = null;
     try {
       app.document.sorts = [{ name: "name", reverse: false }];

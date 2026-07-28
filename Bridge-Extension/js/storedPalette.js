@@ -4,7 +4,7 @@
  * Analysis dominates the runtime, and the answer is already embedded in each
  * file from the previous run — so this parser is what turns a several-minute
  * re-analysis into a few seconds. It is also the only thing standing between
- * a malformed string and a silently wrong colour order, which is why it lives
+ * a malformed string and a silently wrong color order, which is why it lives
  * in its own file with its own tests.
  *
  * Format: comma-separated "#rrggbb|dominance" pairs, most dominant first.
@@ -30,7 +30,7 @@
    * Parse a stored palette string.
    *
    * Entries that do not parse are dropped rather than guessed at: a wrong
-   * colour would sort the file into the wrong place with no visible sign.
+   * color would sort the file into the wrong place with no visible sign.
    *
    * @param {string} text
    * @returns {Array<{hex: string, rgb: number[], dominance: number}>} possibly empty

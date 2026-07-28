@@ -121,7 +121,7 @@
   }
 
   /**
-   * Analyse many files across the pool.
+   * Analyze many files across the pool.
    *
    * @param {string[]} files
    * @param {Object} settings   {colorCount, sampleSize}

@@ -2,7 +2,7 @@
  * BridgeColorShorter - panel controller.
  *
  * Orchestrates: ask Bridge what is selected -> decode and cluster each image
- * here in the panel -> hand the results back to Bridge as XMP plus colour
+ * here in the panel -> hand the results back to Bridge as XMP plus color
  * keywords, which is what Bridge's Filter panel indexes.
  */
 (function () {
@@ -25,7 +25,7 @@
   var state = {
     results: {},        // filePath -> analysis record
     order: [],          // display order
-    activeFilter: null, // { name } - the colour family being shown
+    activeFilter: null, // { name } - the color family being shown
     reverse: false,
     busy: false,
     criteria: {
@@ -44,18 +44,18 @@
       sortMode: 'criteria',
       grouping: 'coarse',
       // How the hue wheel is divided into groups:
-      //   'family'   one group per perceptual colour family, so a family
+      //   'family'   one group per perceptual color family, so a family
       //              ramps once instead of splitting into two gradients
       //   'fixed'    equal 45-degree arcs, which cut wherever the arithmetic
       //              lands - on the measured folder that was the middle of
       //              the golds
-      //   'adaptive' bands fitted to this folder's own colour masses; rejected
+      //   'adaptive' bands fitted to this folder's own color masses; rejected
       //              by eye because it lumped greens and cyans in with blues
       hueBands: 'family',
       serpentine: true,
       writeXmp: true,
       writeKeywords: true, // additive; drives Bridge's Filter panel
-      forceReanalyse: false
+      forceReanalyze: false
     }
   };
 
@@ -75,7 +75,7 @@
   /**
    * Mark a run as in flight, in the DOM as well as in state.
    *
-   * The flag alone only made the buttons ignore clicks. Pressing Analyse
+   * The flag alone only made the buttons ignore clicks. Pressing Analyze
    * during an analysis then looked exactly like the panel having frozen, so
    * the CSS now dims the actions while one is running.
    */
@@ -159,11 +159,11 @@
   }
 
   /**
-   * Analyse across a pool of workers, falling back to the main thread.
+   * Analyze across a pool of workers, falling back to the main thread.
    *
    * The fallback matters more than the speed: if workers cannot start, if one
-   * dies, or if a single file fails inside one, that file is analysed here
-   * instead. A panel that quietly analysed nothing would be worse than a slow
+   * dies, or if a single file fails inside one, that file is analyzed here
+   * instead. A panel that quietly analyzed nothing would be worse than a slow
    * one, and this project has already shipped one silent success.
    */
   function analyzeAll(files, onProgress) {
@@ -193,7 +193,7 @@
         });
       })
       .catch(function (err) {
-        setStatus('Workers unavailable (' + err.message + '), analysing on one thread…');
+        setStatus('Workers unavailable (' + err.message + '), analyzing on one thread…');
         return analyzeOnMainThread(files, onProgress);
       });
   }
@@ -244,7 +244,7 @@
   /** Rebuild a full record from the compact form stored in XMP. */
   function recordFromStored(filePath, stored) {
     // HSL and OKLCH are recomputed from the hex rather than stored, so the
-    // colour spaces can change without invalidating every file's cache.
+    // color spaces can change without invalidating every file's cache.
     var palette = StoredPalette.parse(stored.palette).map(function (c) {
       return {
         hex: c.hex,
@@ -270,21 +270,21 @@
   }
 
   /**
-   * Fetch colour data already embedded in the files.
+   * Fetch color data already embedded in the files.
    *
    * Analysis dominates the runtime, and the answer is normally sitting in each
    * file's XMP from the previous run. Reading it back turns a several-minute
    * re-analysis of a large folder into a few seconds.
    */
   function loadStored(files) {
-    // A failed cache read is not fatal - everything is simply re-analysed -
+    // A failed cache read is not fatal - everything is simply re-analyzed -
     // but it turns a 4-second re-order into a several-minute one, so the
     // reason is carried back rather than silently absorbed.
     function noCache(why) {
       return { cached: {}, remaining: files, warning: why };
     }
 
-    if (state.settings.forceReanalyse) {
+    if (state.settings.forceReanalyze) {
       return Promise.resolve({ cached: {}, remaining: files });
     }
 
@@ -299,7 +299,7 @@
     return evalScript('cxbReadColorBatch("' + esc(payload) + '")')
       .then(function (reply) {
         if (!reply.success) {
-          return noCache('Bridge could not read saved colour data: ' +
+          return noCache('Bridge could not read saved color data: ' +
             (reply.error || 'unknown'));
         }
 
@@ -311,7 +311,7 @@
           var stored = reply.data ? reply.data[f] : null;
           var rec = stored ? recordFromStored(f, stored) : null;
           if (rec) { cached[f] = rec; return; }
-          // Stored but unreadable is different from never analysed: it means
+          // Stored but unreadable is different from never analyzed: it means
           // the palette string in XMP did not parse.
           if (stored) unparsable++;
           remaining.push(f);
@@ -322,12 +322,12 @@
           remaining: remaining,
           elapsedMs: reply.elapsedMs,
           warning: unparsable
-            ? unparsable + ' file(s) had saved colour data that would not parse'
+            ? unparsable + ' file(s) had saved color data that would not parse'
             : null
         };
       })
       .catch(function (e) {
-        return noCache('saved colour data could not be read: ' + e.message);
+        return noCache('saved color data could not be read: ' + e.message);
       });
   }
 
@@ -373,7 +373,7 @@
     collectFiles(which)
       .then(function (files) {
         setStatus('Checking ' + files.length + ' file' +
-          (files.length === 1 ? '' : 's') + ' for saved colour data…');
+          (files.length === 1 ? '' : 's') + ' for saved color data…');
 
         return loadStored(files).then(function (split) {
           var todo = split.remaining;
@@ -389,7 +389,7 @@
 
           setStatus((split.remaining.length === files.length
             ? 'Analysing ' + todo.length
-            : 'Reusing ' + (files.length - todo.length) + ', analysing ' + todo.length) +
+            : 'Reusing ' + (files.length - todo.length) + ', analyzing ' + todo.length) +
             ' image' + (todo.length === 1 ? '' : 's') + '…');
           setProgress(0, todo.length);
 
@@ -432,8 +432,8 @@
 
         var note = outcome.reused
           ? outcome.reused + ' reused' +
-            (outcome.freshCount ? ', ' + outcome.freshCount + ' analysed' : '')
-          : count + ' analysed';
+            (outcome.freshCount ? ', ' + outcome.freshCount + ' analyzed' : '')
+          : count + ' analyzed';
         if (outcome.freshCount && outcome.analysisMs) {
           note += ' in ' + fmtSeconds(outcome.analysisMs) +
             ' (' + Math.round(outcome.analysisMs / outcome.freshCount) + ' ms each)';
@@ -445,7 +445,7 @@
         // be inferred from the wait.
         if (outcome.warning) note += ' — ' + outcome.warning;
 
-        // Only newly analysed files need writing; the rest came from XMP.
+        // Only newly analyzed files need writing; the rest came from XMP.
         var toWrite = outcome.fresh && typeof outcome.fresh === 'object' ? outcome.fresh : {};
         if (!state.settings.writeXmp || Object.keys(toWrite).length === 0) {
           setStatus(note, outcome.warning ? 'error' : 'ok');
@@ -466,7 +466,7 @@
       });
   }
 
-  /** Send records to Bridge to be written as XMP and colour keywords. */
+  /** Send records to Bridge to be written as XMP and color keywords. */
   function pushToBridge(results) {
     var records = [];
     for (var k in results) {
@@ -517,7 +517,7 @@
     var box = $('sortNote');
     if (!box) return;
     box.textContent = 'Orders the list below. Bridge’s own Sort menu ' +
-      'cannot be extended — to narrow the Bridge grid by colour, use the ' +
+      'cannot be extended — to narrow the Bridge grid by color, use the ' +
       'Colour keywords in Bridge’s Filter panel.';
   }
 
@@ -525,20 +525,20 @@
   // Sorting
   //= ==========================================================================
 
-  // Below this OKLCH chroma a colour has no hue worth grouping by. Defined in
+  // Below this OKLCH chroma a color has no hue worth grouping by. Defined in
   // js/hueBands.js and read from there rather than repeated: a second copy of
   // a threshold is a second thing to forget to change, which is exactly how
   // the prefix pattern drifted apart from the host script's copy.
   var ACHROMATIC_CHROMA = HueBands.ACHROMATIC_CHROMA;
 
-  /** Perceptual coordinates of a colour: L 0-100, C 0-100, h 0-360. */
-  function lch(colour) {
-    return colour.oklch ||
-      ColorEngine.rgbToOklch(colour.rgb[0], colour.rgb[1], colour.rgb[2]);
+  /** Perceptual coordinates of a color: L 0-100, C 0-100, h 0-360. */
+  function lch(color) {
+    return color.oklch ||
+      ColorEngine.rgbToOklch(color.rgb[0], color.rgb[1], color.rgb[2]);
   }
 
   /**
-   * How many buckets each criterion is quantised into when it is used for
+   * How many buckets each criterion is quantized into when it is used for
    * grouping. Coarser grouping means larger groups, which is what lets the
    * next criterion actually order anything.
    */
@@ -551,8 +551,8 @@
   /**
    * How light the whole image reads, 0-100.
    *
-   * NOT the lightness of the representative colour, which is what this used to
-   * sort on. The representative is one swatch — the most colourful significant
+   * NOT the lightness of the representative color, which is what this used to
+   * sort on. The representative is one swatch — the most colorful significant
    * cluster — and on a real folder its lightness disagrees with the image's by
    * 14 points on average, and by more than 20 points for a quarter of the
    * library. The worst case measured was a bright tile whose representative was
@@ -561,11 +561,11 @@
    *
    * The eye judges a thumbnail by the whole tile, so the ramp has to be built
    * on the whole tile. Ordering on this instead cut the mean lightness step
-   * between neighbours from 8.16 to 0.34.
+   * between neighbors from 8.16 to 0.34.
    *
    * Returned CONTINUOUS, not rounded. Rounding here made the ordering depend
    * on where a value sat relative to an x.5 boundary, and the dominance stored
-   * in XMP carries only three decimals — so a file analysed fresh and the same
+   * in XMP carries only three decimals — so a file analyzed fresh and the same
    * file read back from its own cache could round to 36 and 37 and swap places.
    * Measured on the 1,559-image folder: 598 files differed that way between a
    * fresh analysis and a cached re-read, which meant the panel's list no longer
@@ -595,7 +595,7 @@
     return rec._meanL;
   }
 
-  // `raw` takes the representative colour AND the record: hue and chroma are
+  // `raw` takes the representative color AND the record: hue and chroma are
   // properties of the chosen swatch, lightness is a property of the picture.
   var CRITERIA = [
     { key: 'hue', label: 'hue', letter: 'H', max: 359,
@@ -611,7 +611,7 @@
   var FIELD_WIDTH = 3;
   var ACHROMATIC_BUCKET = 9999;
 
-  /** The colour a record is judged by, honouring the "Colour used" setting. */
+  /** The color a record is judged by, honouring the "Color used" setting. */
   function repOf(rec) {
     return rec.representative || rec.dominant;
   }
@@ -625,8 +625,8 @@
     return stripPrefix(baseName(filePath));
   }
 
-  function isAchromatic(colour) {
-    return lch(colour)[1] < ACHROMATIC_CHROMA;
+  function isAchromatic(color) {
+    return lch(color)[1] < ACHROMATIC_CHROMA;
   }
 
   function enabledCriteria() {
@@ -634,13 +634,13 @@
   }
 
   /**
-   * Quantise a criterion into buckets.
+   * Quantize a criterion into buckets.
    *
    * This is the fix for the sort looking noisy. Measured on a real 1,559-image
    * folder sorted by hue then chroma then lightness: chroma at full 0-100
    * resolution produced 452 groups averaging 3.4 images, 166 of them
    * singletons. Lightness therefore never ordered anything and jumped by more
-   * than 20 points between 11% of neighbours - which is visible as noise.
+   * than 20 points between 11% of neighbors - which is visible as noise.
    *
    * Quantising every criterion *except the last* creates groups big enough for
    * the last one to sort smoothly inside.
@@ -683,8 +683,8 @@
 
     var hues = [];
     Object.keys(state.results).forEach(function (k) {
-      var colour = repOf(state.results[k]);
-      if (!isAchromatic(colour)) hues.push(lch(colour)[2]);
+      var color = repOf(state.results[k]);
+      if (!isAchromatic(color)) hues.push(lch(color)[2]);
     });
 
     hueCutCache = HueBands.cuts(
@@ -692,16 +692,16 @@
     return hueCutCache;
   }
 
-  /** Grouping key: every ticked criterion except the last, quantised. */
+  /** Grouping key: every ticked criterion except the last, quantized. */
   function groupKey(rec) {
     var list = enabledCriteria();
-    var colour = repOf(rec);
+    var color = repOf(rec);
     var key = [];
 
     for (var i = 0; i < list.length - 1; i++) {
       var c = list[i];
-      if (c.key === 'hue' && isAchromatic(colour)) key.push(ACHROMATIC_BUCKET);
-      else key.push(bucket(c, c.raw(colour, rec)));
+      if (c.key === 'hue' && isAchromatic(color)) key.push(ACHROMATIC_BUCKET);
+      else key.push(bucket(c, c.raw(color, rec)));
     }
     return key;
   }
@@ -711,12 +711,12 @@
     var list = enabledCriteria();
     if (list.length === 0) return 0;
     var last = list[list.length - 1];
-    var colour = repOf(rec);
+    var color = repOf(rec);
 
-    // A grey has no hue to order by, so the only axis with anything to say
+    // A gray has no hue to order by, so the only axis with anything to say
     // about it is how light it is.
-    if (last.key === 'hue' && isAchromatic(colour)) return meanLightness(rec);
-    return last.raw(colour, rec);
+    if (last.key === 'hue' && isAchromatic(color)) return meanLightness(rec);
+    return last.raw(color, rec);
   }
 
   function compareGroups(a, b) {
@@ -768,22 +768,22 @@
    *
    * Each image keeps its full palette, and the images are arranged into a path
    * where each is as close as possible to the one before it. Measured on a
-   * 1,559-image folder this halves the mean perceptual gap between neighbours
-   * compared with sorting on a single representative colour, because a busy
-   * artwork is not one colour and sorting on one throws the rest away.
+   * 1,559-image folder this halves the mean perceptual gap between neighbors
+   * compared with sorting on a single representative color, because a busy
+   * artwork is not one color and sorting on one throws the rest away.
    */
   function rebuildOrderBySimilarity() {
     var records = Object.keys(state.results).map(function (k) {
       return { key: k, palette: state.results[k].palette };
     });
     // Cluster first, then walk a path inside each block. A single path over
-    // the whole set is smooth between neighbours but has no global structure:
+    // the whole set is smooth between neighbors but has no global structure:
     // it consumes the dense regions first and its tail wanders, scattering
-    // blues through the reds. Clustering keeps each colour region contiguous.
+    // blues through the reds. Clustering keeps each color region contiguous.
     var groups = { coarse: 8, medium: 14, fine: 24 }[state.settings.grouping] || 14;
 
     state.order = Similarity.orderByClusters(records, {
-      maxColours: state.settings.colorCount,
+      maxColors: state.settings.colorCount,
       groups: groups
     });
     if (state.reverse) state.order = state.order.slice().reverse();
@@ -848,7 +848,7 @@
    */
   function buildPrefixes(files) {
     // A similarity path is a sequence, not a set of sortable values, so the
-    // position itself has to carry the order. The representative colour rides
+    // position itself has to carry the order. The representative color rides
     // along as information, the same way the fine value does elsewhere.
     if (state.settings.sortMode === 'similarity') {
       var width = Math.max(4, String(files.length).length);
@@ -872,14 +872,14 @@
 
     files.forEach(function (f) {
       var rec = state.results[f];
-      var colour = repOf(rec);
+      var color = repOf(rec);
       var key = groupKey(rec);
       var joined = key.join(',');
       if (joined !== lastKey) { rank = 0; lastKey = joined; }
 
       var parts = [];
 
-      // Grouping criteria, quantised, in priority order.
+      // Grouping criteria, quantized, in priority order.
       for (var i = 0; i < key.length; i++) {
         parts.push(key[i] === ACHROMATIC_BUCKET
           ? 'Z' + pad(meanLightness(rec), FIELD_WIDTH)
@@ -893,9 +893,9 @@
 
       // The final criterion's real value - ordering when unsmoothed,
       // information when smoothed.
-      var fine = (last.key === 'hue' && isAchromatic(colour))
+      var fine = (last.key === 'hue' && isAchromatic(color))
         ? meanLightness(rec)
-        : last.raw(colour, rec);
+        : last.raw(color, rec);
       parts.push(last.letter + pad(fine, FIELD_WIDTH));
 
       out[f] = parts.join('-');
@@ -926,7 +926,7 @@
     updateRenamePreview();
   }
 
-  /** The "Colour used" setting changed, so every record needs re-judging. */
+  /** The "Color used" setting changed, so every record needs re-judging. */
   function recomputeRepresentatives() {
     Object.keys(state.results).forEach(function (f) {
       var rec = state.results[f];
@@ -938,7 +938,7 @@
     renderSwatches();
     renderResults();
     updateRenamePreview();
-    setStatus('Using ' + state.settings.representative + ' colour', 'ok');
+    setStatus('Using ' + state.settings.representative + ' color', 'ok');
   }
 
   function applySort() {
@@ -959,7 +959,7 @@
 
 
   //= ==========================================================================
-  // Numbering files so Bridge's own grid follows the colour order
+  // Numbering files so Bridge's own grid follows the color order
   //= ==========================================================================
 
   /** Show what the next rename would do, without touching anything. */
@@ -982,11 +982,11 @@
   }
 
   /**
-   * Rename files so an alphabetical sort in Bridge equals the colour order.
+   * Rename files so an alphabetical sort in Bridge equals the color order.
    *
    * Bridge's Sort menu is a fixed enum with no way to add a criterion, and its
    * manual order cannot be set from a script. Filename is the only ordering
-   * Bridge exposes that can be made to carry arbitrary data, so the colour
+   * Bridge exposes that can be made to carry arbitrary data, so the color
    * order is encoded into a prefix and Bridge is switched to Sort > By Filename.
    *
    * The original name is preserved intact after the prefix, and stored in XMP,
@@ -1023,7 +1023,7 @@
   /** Warn about results belonging to other folders, which will be left alone. */
   function otherFolderNote(scope) {
     return scope.elsewhere
-      ? '\n\n' + scope.elsewhere + ' other analysed file(s) are not in this ' +
+      ? '\n\n' + scope.elsewhere + ' other analyzed file(s) are not in this ' +
         'folder and will NOT be touched.'
       : '';
   }
@@ -1057,7 +1057,7 @@
       var sample = items[0];
       if (!window.confirm(
         'Rename ' + items.length + ' file(s) in “' + scope.folder + '” so Bridge ' +
-        'can show them in colour order?\n\n' +
+        'can show them in color order?\n\n' +
         'Sorted by: ' + describeSort() + '\n\n' +
         '    ' + baseName(sample.filePath) + '\n' +
         ' →  ' + sample.prefix + '_' + stripPrefix(baseName(sample.filePath)) + '\n\n' +
@@ -1106,7 +1106,7 @@
         }
         if (reply.sortError) {
           setStatus(msg + ', but Bridge refused to switch to Sort by Filename (' +
-            reply.sortError + '). Set it yourself to see the colour order.', 'error');
+            reply.sortError + '). Set it yourself to see the color order.', 'error');
           return;
         }
         setStatus(msg + '. Bridge is now sorting by filename.', 'ok');
@@ -1118,7 +1118,7 @@
    * Restore the original filenames, in the folder Bridge is showing.
    *
    * Scoped deliberately. This used to run over every result accumulated in the
-   * session — `Object.keys(state.results)` — so after analysing one folder and
+   * session — `Object.keys(state.results)` — so after analyzing one folder and
    * moving to another, Undo silently renamed files in both. It was doing
    * exactly what it was told, on files the user could not see.
    */
@@ -1132,7 +1132,7 @@
     setStatus('Checking which files are in this folder…');
     scopeToCurrentFolder(all).then(function (scope) {
       if (scope.here.length === 0) {
-        setStatus('None of the analysed files are in the folder Bridge is ' +
+        setStatus('None of the analyzed files are in the folder Bridge is ' +
           'showing, so there is nothing to undo here.', 'error');
         return;
       }
@@ -1306,7 +1306,7 @@
 
     var list = Object.keys(buckets).map(function (n) { return buckets[n]; });
     if (list.length === 0) {
-      host.innerHTML = '<div class="placeholder">Analyse images to see colours</div>';
+      host.innerHTML = '<div class="placeholder">Analyze images to see colors</div>';
       return;
     }
 
@@ -1345,7 +1345,7 @@
 
     if (shown.length === 0) {
       host.innerHTML = '<div class="placeholder">' +
-        (state.order.length ? 'No images match that colour' : 'No results yet') + '</div>';
+        (state.order.length ? 'No images match that color' : 'No results yet') + '</div>';
       updateCount(0);
       return;
     }
@@ -1569,7 +1569,7 @@
 
     bindToggle('writeXmpToggle', 'writeXmp');
     bindToggle('writeKeywordsToggle', 'writeKeywords');
-    bindToggle('forceReanalyseToggle', 'forceReanalyse');
+    bindToggle('forceReanalyzeToggle', 'forceReanalyze');
   }
 
   function bindToggle(id, key, after) {
@@ -1607,7 +1607,7 @@
     if (typeof require !== 'function') {
       setStatus('Node runtime unavailable — image decoding will not work.', 'error');
     } else {
-      setStatus('Ready. Select images in Bridge, then Analyse.');
+      setStatus('Ready. Select images in Bridge, then Analyze.');
     }
 
     reflectSortMode();

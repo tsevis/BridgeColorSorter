@@ -1,5 +1,5 @@
 /**
- * ColorEngine - genuine colour extraction for BridgeColorShorter.
+ * ColorEngine - genuine color extraction for BridgeColorShorter.
  *
  * Pixels are decoded by Chromium itself: the file is read from disk with
  * Node, wrapped in a Blob URL (same-origin, so the canvas is never tainted)
@@ -8,7 +8,7 @@
  * first.
  *
  * This replaces the previous approach of reading raw *compressed* file bytes
- * as if they were RGB triples, which cannot produce meaningful colours.
+ * as if they were RGB triples, which cannot produce meaningful colors.
  */
 (function (global) {
   'use strict';
@@ -176,7 +176,7 @@
   }
 
   // ---------------------------------------------------------------------
-  // Colour space helpers
+  // Color space helpers
   // ---------------------------------------------------------------------
 
   function rgbToHex(r, g, b) {
@@ -216,12 +216,12 @@
   // ---------------------------------------------------------------------
   // OKLab / OKLCH
   //
-  // HSL is not a perceptual space, and sorting by HSL hue is why a colour sort
+  // HSL is not a perceptual space, and sorting by HSL hue is why a color sort
   // looks wrong even when it is numerically right:
   //
   //   - A pale pink and a deep crimson both report hue 0, so they land next to
   //     each other despite looking nothing alike.
-  //   - Hue is unstable at low saturation: a near-grey gets an essentially
+  //   - Hue is unstable at low saturation: a near-gray gets an essentially
   //     random hue and drops into the middle of the reds.
   //   - HSL "lightness" is not perceived lightness. Pure yellow and pure blue
   //     are both L=50, though yellow is far brighter to the eye.
@@ -309,7 +309,7 @@
   // ---------------------------------------------------------------------
 
   /**
-   * Deterministic pseudo-random source, so re-analysing a file yields the
+   * Deterministic pseudo-random source, so re-analyzing a file yields the
    * same palette rather than drifting between runs.
    */
   function makeRandom(seed) {
@@ -475,17 +475,17 @@
   }
 
   /**
-   * Choose the colour that best represents an image.
+   * Choose the color that best represents an image.
    *
    * Neither obvious choice works on its own:
    *   - The *average* of a red-and-green image is a muddy brown that appears
    *     nowhere in the picture.
-   *   - The *dominant* cluster is often a large neutral - a grey wall, a white
+   *   - The *dominant* cluster is often a large neutral - a gray wall, a white
    *     background - when a person looking at the image would call it "red".
    *
    * 'balanced' (the default) splits the difference: among clusters that are
-   * genuinely colourful and occupy a meaningful share of the frame, take the
-   * one with the best combination of area and chroma. If nothing is colourful,
+   * genuinely colorful and occupy a meaningful share of the frame, take the
+   * one with the best combination of area and chroma. If nothing is colorful,
    * the image really is neutral, so fall back to the plain dominant cluster.
    *
    * @param {Array} palette sorted by dominance, descending
@@ -519,9 +519,9 @@
     // (HueBands.ACHROMATIC_CHROMA). These answer different questions: this one
     // asks which cluster best stands for an image, and a muted red is still
     // the answer for a muted red photograph. The grouping cutoff asks whether
-    // that answer is colourful enough to anchor a colour family, which is a
+    // that answer is colorful enough to anchor a color family, which is a
     // higher bar. Raising this one to match would start throwing away real
-    // colours and falling back to the dominant grey wall.
+    // colors and falling back to the dominant gray wall.
     var MIN_CHROMA = 8;
     var MIN_SHARE = 0.08;  // ignore specks; they are not what the image "is"
 

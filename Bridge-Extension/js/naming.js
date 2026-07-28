@@ -1,5 +1,5 @@
 /**
- * Filename prefixing: the one mechanism that can carry an arbitrary colour
+ * Filename prefixing: the one mechanism that can carry an arbitrary color
  * order into Bridge's own grid.
  *
  * Split out of app.js so it can be tested offline. The host script

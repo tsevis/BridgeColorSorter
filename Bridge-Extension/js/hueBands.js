@@ -6,7 +6,7 @@
  * real 1,559-image folder that put a boundary at exactly 90 degrees — straight
  * through the densest part of the golds (80-89: 105 images, 90-99: 71) — so the
  * gold family was split into two groups and ramped twice. The grid showed two
- * gradients where the eye reads one block of colour.
+ * gradients where the eye reads one block of color.
  *
  * Rotating the arcs does not fix it: the golds span 65 degrees and an arc is
  * 45, so no rotation fits them in one. The arcs have to be unequal.
@@ -14,7 +14,7 @@
  * Two ways to make them unequal were tried and rejected:
  *
  *  - **Fixed perceptual families.** Nino derives 14 hue families from the
- *    measured OKLCH angles of the CSS named colours, which is a better basis
+ *    measured OKLCH angles of the CSS named colors, which is a better basis
  *    than intuition. But this folder's golds still straddle three of them
  *    (orange 40-75, amber 75-100, yellow 100-122), so the split moves rather
  *    than closing.
@@ -24,7 +24,7 @@
  *
  * What works is cutting at the *valleys between the masses*, chosen by
  * prominence: how far you have to climb out of a dip before you can reach a
- * lower one. A shallow dip inside one colour mass has low prominence; the gap
+ * lower one. A shallow dip inside one color mass has low prominence; the gap
  * between the reds and the golds has high prominence. On the same folder this
  * yields five bands - reds, golds, greens-through-blues, a small violet band,
  * and the wrap - each of which reads as one block.
@@ -33,14 +33,14 @@
   'use strict';
 
   /**
-   * Below this OKLCH chroma (0-100 scale) a colour has no hue worth grouping
+   * Below this OKLCH chroma (0-100 scale) a color has no hue worth grouping
    * by, so the image goes into the neutral band and is ordered by lightness.
    *
    * This is a *grouping* threshold, not a perceptual one, and the two differ.
-   * The perceptual floor — below which a colour genuinely reads as grey — is
+   * The perceptual floor — below which a color genuinely reads as gray — is
    * about 8: Nino reaches it independently at a native OKLCH chroma of 0.025,
    * which is 7.6 here. But grouping asks a harder question: is this hue stable
-   * and convincing enough to put the image in a colour family? A washed-out
+   * and convincing enough to put the image in a color family? A washed-out
    * mauve at chroma 14 has a hue, and it is not one anybody would call
    * magenta.
    *
@@ -48,22 +48,22 @@
    * different directions. Its `saturationBand` calls anything below native
    * 0.06 "muted" (18.2 here), and its neutral-block cutoff for whole-palette
    * ordering is 0.059 (17.9). Anything a naming scheme would only call
-   * "muted" has no business anchoring a colour family.
+   * "muted" has no business anchoring a color family.
    *
    * Measured on the 1,559-image folder this moves the neutral band from 6
    * images to 281 — enough to ramp smoothly instead of jumping 34 lightness
-   * points between the only two greys in the middle of the range.
+   * points between the only two grays in the middle of the range.
    *
    * NOTE this is deliberately NOT the same as ColorEngine's representative
    * chroma floor, which is still 8. That one asks which cluster best stands
-   * for an image; this one asks whether the answer is colourful enough to
-   * group on. Raising both together would start discarding real colours.
+   * for an image; this one asks whether the answer is colorful enough to
+   * group on. Raising both together would start discarding real colors.
    */
   var ACHROMATIC_CHROMA = 18;
 
   /**
    * How prominent a valley must be, as a fraction of the busiest hue, before it
-   * becomes a group boundary. Coarse keeps only the gaps between major colour
+   * becomes a group boundary. Coarse keeps only the gaps between major color
    * masses; fine also splits within them.
    *
    * The measured folder has five valleys above 15% and then a cliff to 1%, so
@@ -75,7 +75,7 @@
   var MIN_ARC = 12;
 
   /**
-   * Perceptual colour families: one group per family, so a family ramps once.
+   * Perceptual color families: one group per family, so a family ramps once.
    *
    * Equal arcs split the golds because a boundary fell at 90 degrees, in the
    * middle of them. Serpentine then reversed the second half, and a family
@@ -83,7 +83,7 @@
    * which is exactly what it looks like on a contact sheet.
    *
    * These boundaries come from Nino's `HueFamily` bins, which were measured
-   * from the OKLCH hue angles of the CSS named colours rather than guessed:
+   * from the OKLCH hue angles of the CSS named colors rather than guessed:
    *
    *   pink 15 · red 40 · orange 75 · amber 100 · yellow 122 · chartreuse 139
    *   green 162 · emerald 180 · cyan 210 · azure 240 · blue 272 · indigo 295
@@ -226,7 +226,7 @@
    * Which band a hue falls in, numbered from the band containing 0 degrees.
    *
    * The wheel is a cycle, so the band indices only need to be consistent — but
-   * they also decide which colour the library opens on, and the arc holding
+   * they also decide which color the library opens on, and the arc holding
    * red almost always wraps through 0, which would otherwise number it last
    * and put the reds at the end. Anchoring at 0 keeps the familiar red → gold
    * → green → blue reading regardless of where the cuts landed.

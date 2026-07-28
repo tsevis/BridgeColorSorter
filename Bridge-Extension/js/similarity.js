@@ -1,14 +1,14 @@
 /**
  * Ordering images by whole-palette similarity.
  *
- * Sorting on a single representative colour has a hard ceiling: a busy artwork
- * is not one colour. Two tiles can share a dominant red and look nothing alike
+ * Sorting on a single representative color has a hard ceiling: a busy artwork
+ * is not one color. Two tiles can share a dominant red and look nothing alike
  * because one carries gold and cream while the other carries blue and white.
  * No amount of tuning to the sort criteria fixes that, because the information
  * was thrown away before the sort began.
  *
  * This orders by the *whole palette* instead. Each image keeps its full set of
- * clustered colours with their weights, a perceptual distance is defined
+ * clustered colors with their weights, a perceptual distance is defined
  * between two such palettes, and the images are arranged into a path where each
  * is as close as possible to the one before it.
  *
@@ -23,8 +23,8 @@
    * Pack a record's palette into flat typed arrays.
    * OKLab is used directly, so a plain Euclidean distance is perceptual.
    */
-  function pack(record, maxColours) {
-    var palette = (record.palette || []).slice(0, maxColours || 5);
+  function pack(record, maxColors) {
+    var palette = (record.palette || []).slice(0, maxColors || 5);
     var n = palette.length;
     var lab = new Float64Array(n * 3);
     var w = new Float64Array(n);
@@ -61,10 +61,10 @@
   /**
    * Distance between two palettes.
    *
-   * For every colour in A, find its nearest counterpart in B and weight that
-   * gap by how much of A the colour occupies; then do the same from B to A and
+   * For every color in A, find its nearest counterpart in B and weight that
+   * gap by how much of A the color occupies; then do the same from B to A and
    * average. This is the standard cheap approximation of earth-mover's
-   * distance: it asks "how far would I have to move A's colours to land on B's"
+   * distance: it asks "how far would I have to move A's colors to land on B's"
    * without solving the full transport problem, which would be far too slow for
    * a million pairs.
    */
@@ -107,7 +107,7 @@
   }
 
   /**
-   * Greedy nearest-neighbour path, then a windowed 2-opt clean-up.
+   * Greedy nearest-neighbor path, then a windowed 2-opt clean-up.
    *
    * Greedy alone leaves occasional long jumps where it strands an image and has
    * to leap back for it. 2-opt reverses a segment when doing so shortens the
@@ -116,7 +116,7 @@
    */
   function orderByPalette(records, options) {
     options = options || {};
-    var maxColours = options.maxColours || 5;
+    var maxColors = options.maxColors || 5;
     var window = options.window || 40;
     var onProgress = options.onProgress;
 
@@ -124,10 +124,10 @@
     if (n < 3) return records.map(function (r) { return r.key; });
 
     var packed = new Array(n);
-    for (var i = 0; i < n; i++) packed[i] = pack(records[i], maxColours);
+    for (var i = 0; i < n; i++) packed[i] = pack(records[i], maxColors);
 
     // Start from the darkest image, so the path begins at an edge of the
-    // colour space rather than somewhere in the middle.
+    // color space rather than somewhere in the middle.
     var seed = 0;
     var darkest = Infinity;
     for (var s = 0; s < n; s++) {
@@ -190,19 +190,19 @@
   // -----------------------------------------------------------------------
   // Cluster, then order
   //
-  // A single nearest-neighbour path is smooth between adjacent images but has
-  // no global structure. Measured on a 1,559-image folder it changed colour
+  // A single nearest-neighbor path is smooth between adjacent images but has
+  // no global structure. Measured on a 1,559-image folder it changed color
   // region 722 times across only 9 regions - it entered blue 87 separate times
   // and neutrals 187. Every individual step was short, so the local metric
   // looked excellent while the grid still read as scattered.
   //
   // Grouping first fixes what the path cannot: cluster the palettes, order the
-  // clusters, then order within each. Each colour region is then visited
+  // clusters, then order within each. Each color region is then visited
   // exactly once, as one contiguous block.
   // -----------------------------------------------------------------------
 
   /**
-   * Lightness-free descriptor of a palette: pure colour identity.
+   * Lightness-free descriptor of a palette: pure color identity.
    *
    * Two problems were caused by clustering on the full OKLab palette:
    *
@@ -211,15 +211,15 @@
    *    pushed them into the same cluster, which is why dark reds and dark
    *    yellows appeared side by side.
    *  - A dark red and a bright red are far apart in L, so they landed in
-   *    different clusters - when they are obviously the same colour family.
+   *    different clusters - when they are obviously the same color family.
    *
-   * Each colour is therefore reduced to a direction on the hue circle scaled by
-   * how colourful it is, plus a third axis for how neutral it is. Lightness is
+   * Each color is therefore reduced to a direction on the hue circle scaled by
+   * how colorful it is, plus a third axis for how neutral it is. Lightness is
    * excluded entirely: it is the job of the within-group ramp, not of grouping.
    * Dark red and bright red now coincide; dark red and dark yellow do not.
    */
-  function packHue(record, maxColours) {
-    var palette = (record.palette || []).slice(0, maxColours || 5);
+  function packHue(record, maxColors) {
+    var palette = (record.palette || []).slice(0, maxColors || 5);
     var n = palette.length;
     var v = new Float64Array(n * 3);
     var w = new Float64Array(n);
@@ -229,7 +229,7 @@
       var c = palette[i];
       var o = c.oklch || ColorEngine.rgbToOklch(c.rgb[0], c.rgb[1], c.rgb[2]);
 
-      // "Colourfulness" saturates quickly, so a muted red still reads as red
+      // "Colorfulness" saturates quickly, so a muted red still reads as red
       // rather than drifting toward neutral.
       var s = Math.min(1, o[1] / 25);
       var rad = o[2] * Math.PI / 180;
@@ -361,7 +361,7 @@
   }
 
   /**
-   * Angle of a block on the hue wheel, and how colourful it is overall.
+   * Angle of a block on the hue wheel, and how colorful it is overall.
    * Averaging hue as a vector avoids the wrap-around problem that plagues
    * averaging degrees directly.
    */
@@ -409,7 +409,7 @@
     return info.map(function (e) { return e.index; });
   }
 
-  /** Greedy nearest-neighbour path over one block's members. */
+  /** Greedy nearest-neighbor path over one block's members. */
   function pathWithin(packed, members) {
     var m = members.length;
     if (m < 3) return members.slice();
@@ -443,15 +443,15 @@
   }
 
   /**
-   * Order by clustering into colour groups, ordering the groups, then walking a
+   * Order by clustering into color groups, ordering the groups, then walking a
    * short path inside each.
    *
    * @param {Array} records  [{key, palette}]
-   * @param {Object} options {groups, maxColours, serpentine}
+   * @param {Object} options {groups, maxColors, serpentine}
    */
   function orderByClusters(records, options) {
     options = options || {};
-    var maxColours = options.maxColours || 5;
+    var maxColors = options.maxColors || 5;
     var serpentineOn = options.serpentine !== false;
     var n = records.length;
     if (n < 3) return records.map(function (r) { return r.key; });
@@ -461,14 +461,14 @@
     var packed = new Array(n);
     var hues = new Array(n);
     for (var i = 0; i < n; i++) {
-      packed[i] = pack(records[i], maxColours);
-      hues[i] = packHue(records[i], maxColours);
+      packed[i] = pack(records[i], maxColors);
+      hues[i] = packHue(records[i], maxColors);
     }
 
-    // Group on colour identity alone.
+    // Group on color identity alone.
     var clustered = clusterPalettes(hues, groups, options.iterations || 8);
 
-    // Order the blocks around the hue wheel rather than by a nearest-neighbour
+    // Order the blocks around the hue wheel rather than by a nearest-neighbor
     // chain. A chain can leave two blue blocks at opposite ends of the path -
     // locally reasonable, globally wrong. Since the blocks are hue-coherent,
     // walking the wheel guarantees red sits by orange and every blue together.
@@ -487,9 +487,9 @@
       if (!members || members.length === 0) continue;
 
       // Inside a block, a strict lightness ramp - dark to light, monotonically.
-      // A similarity path here reads as noise: it optimises colour closeness,
+      // A similarity path here reads as noise: it optimizes color closeness,
       // which does not move in step with lightness, so the block visibly jumps
-      // between light and dark. Grouping already handled colour; lightness is
+      // between light and dark. Grouping already handled color; lightness is
       // the only thing left for this level to express.
       var seq = members.slice().sort(function (x, y) {
         return meanLightness(packed[x]) - meanLightness(packed[y]);
@@ -512,9 +512,9 @@
   }
 
   /** Mean distance between consecutive images - lower is a smoother run. */
-  function measure(records, orderedKeys, maxColours) {
+  function measure(records, orderedKeys, maxColors) {
     var byKey = {};
-    records.forEach(function (r) { byKey[r.key] = pack(r, maxColours || 5); });
+    records.forEach(function (r) { byKey[r.key] = pack(r, maxColors || 5); });
 
     var total = 0;
     var worst = 0;

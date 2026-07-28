@@ -1,7 +1,7 @@
 /**
- * Maps a colour to a human-readable family name.
+ * Maps a color to a human-readable family name.
  *
- * The name is stored in XMP and used for the panel's colour buckets, so it
+ * The name is stored in XMP and used for the panel's color buckets, so it
  * needs to be stable and coarse rather than poetic.
  */
 (function (global) {
@@ -47,7 +47,7 @@
   }
 
   /**
-   * Bridge has exactly five label slots, each bound to a fixed swatch colour.
+   * Bridge has exactly five label slots, each bound to a fixed swatch color.
    * The order here is the swatch order Bridge itself uses, which happens to run
    * roughly around the spectrum.
    */
@@ -60,7 +60,7 @@
   ];
 
   /**
-   * Pick the nearest label swatch for a colour. Achromatic colours have no
+   * Pick the nearest label swatch for a color. Achromatic colors have no
    * meaningful hue, so they get no label rather than a misleading one.
    *
    * @returns {Object|null} an entry from LABEL_SLOTS, or null to leave unlabelled
