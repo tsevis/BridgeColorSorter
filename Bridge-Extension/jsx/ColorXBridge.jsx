@@ -553,24 +553,55 @@ function cxbRevealFile(filePath) {
  */
 function cxbSelectFiles(jsonPath) {
   try {
-    var paths = eval("(" + cxbReadFile(jsonPath) + ")");
+    var payload = eval("(" + cxbReadFile(jsonPath) + ")");
+    var paths = payload instanceof Array ? payload : payload.paths;
+    var limit = (payload instanceof Array ? 0 : payload.limit) || 0;
 
-    try { app.document.deselectAll(); } catch (e) {
-      try { app.document.selections = []; } catch (e2) {}
-    }
+    // Selecting one thumbnail at a time crashed Bridge outright at 1,559 files:
+    // every call constructs a Thumbnail and forces the content pane to update.
+    // Build the whole list first and hand it over in a single assignment.
+    var thumbs = [];
+    var missing = 0;
 
-    var selected = 0;
     for (var i = 0; i < paths.length; i++) {
+      if (limit && thumbs.length >= limit) break;
       try {
         var f = new File(paths[i]);
-        if (!f.exists) continue;
-        app.document.select(new Thumbnail(f)); // additive, which is what we want here
-        selected++;
-      } catch (eSel) {}
+        if (!f.exists) { missing++; continue; }
+        thumbs.push(new Thumbnail(f));
+      } catch (eMake) {
+        missing++;
+      }
     }
 
-    try { app.bringToFront(); } catch (e3) {}
-    return cxbJSON({ success: true, selected: selected, requested: paths.length });
+    if (thumbs.length === 0) {
+      return cxbJSON({ success: false, error: "none of those files could be found" });
+    }
+
+    var how = null;
+    try {
+      app.document.selections = thumbs;
+      how = "bulk";
+    } catch (eBulk) {
+      // Older builds may not accept a whole-array assignment. Fall back to the
+      // incremental route, but only for a small set - it is what crashed.
+      try { app.document.deselectAll(); } catch (eClear) {}
+      var capped = Math.min(thumbs.length, 200);
+      for (var j = 0; j < capped; j++) {
+        try { app.document.select(thumbs[j]); } catch (eOne) {}
+      }
+      how = "incremental (capped at " + capped + ")";
+    }
+
+    try { app.bringToFront(); } catch (eFront) {}
+
+    return cxbJSON({
+      success: true,
+      selected: thumbs.length,
+      requested: paths.length,
+      missing: missing,
+      via: how
+    });
   } catch (e) {
     return cxbErr(e, "cxbSelectFiles");
   }

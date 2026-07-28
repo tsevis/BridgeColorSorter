@@ -922,7 +922,15 @@
       .catch(function (e) { setStatus(e.message, 'error'); });
   }
 
-  /** Select everything currently listed, in order, in Bridge's content pane. */
+  /**
+   * Select everything currently listed, in Bridge's content pane.
+   *
+   * Capped deliberately. Handing Bridge a very large selection is heavy even in
+   * one assignment, and the earlier one-at-a-time version crashed it outright
+   * at 1,559 files.
+   */
+  var SELECTION_LIMIT = 500;
+
   function selectInBridge() {
     var shown = state.order.filter(function (f) { return passesFilter(state.results[f]); });
     if (shown.length === 0) {
@@ -930,25 +938,34 @@
       return;
     }
 
+    var capped = shown.length > SELECTION_LIMIT;
+    if (capped && !window.confirm(
+      shown.length + ' files are listed. Selecting that many at once can make ' +
+      'Bridge unresponsive, so only the first ' + SELECTION_LIMIT +
+      ' will be selected.\n\nContinue?')) return;
+
     var payload;
     try {
-      payload = writeTempJson('select.json', shown);
+      payload = writeTempJson('select.json', { paths: shown, limit: SELECTION_LIMIT });
     } catch (e) {
       setStatus(e.message, 'error');
       return;
     }
 
-    setStatus('Selecting ' + shown.length + ' file(s) in Bridge…');
+    setStatus('Selecting in Bridge…');
     evalScript('cxbSelectFiles("' + esc(payload) + '")')
       .then(function (reply) {
-        if (reply.success) {
-          setStatus('Selected ' + reply.selected + ' of ' + shown.length + ' in Bridge', 'ok');
-        } else {
-          setStatus('Could not select: ' + (reply.error || 'unknown'), 'error');
+        if (!reply.success) throw new Error(reply.error || 'could not select');
+        var msg = 'Selected ' + reply.selected + ' in Bridge';
+        if (reply.requested > reply.selected) {
+          msg += ' (of ' + reply.requested + ' listed)';
         }
+        if (reply.missing) msg += ', ' + reply.missing + ' not found';
+        setStatus(msg, 'ok');
       })
       .catch(function (e) { setStatus(e.message, 'error'); });
   }
+
 
   //= ==========================================================================
   // Rendering
