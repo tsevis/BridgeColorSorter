@@ -233,6 +233,9 @@ function cxbApplyProps(xmp, rec) {
   xmp.setProperty(CXB_NS, "colorName", String(rec.colorName || ""));
   xmp.setProperty(CXB_NS, "palette", cxbPaletteToString(rec.palette || []));
   xmp.setProperty(CXB_NS, "analyzedAt", String(rec.metadata ? rec.metadata.analyzedAt : ""));
+  // The schema version of the stored data, NOT the version of the panel.
+  // It says how to read the palette string back; bumping it with a release
+  // would strand every palette already written.
   xmp.setProperty(CXB_NS, "version", "2.0");
 }
 

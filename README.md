@@ -2,10 +2,21 @@
 
 **Sort a folder of images by colour, inside Adobe Bridge.**
 
-Point it at a folder, press one button, and the grid rearranges itself so that
-reds sit with reds, golds with golds, and each block runs smoothly from dark to
-light. It is built for people with thousands of images and no way to see the
-shape of what they have.
+I love Adobe Bridge. It is my favourite file browser. But I would love to have
+some more ways to sort my infinite numbers of images. To sort them by colour.
+
+And not just any colour — not the average of the picture, which for a red and
+green image is a muddy brown that appears nowhere in it. Not the biggest patch
+either, which is so often the grey wall behind the thing you actually
+photographed. I wanted the colour a person would *say* the image is, and I
+wanted the reds to arrive together, and to run from dark to light rather than
+jumping about.
+
+Bridge will not do that, and it will not let you teach it to: the Sort menu is
+a fixed list with no way in. So this panel works out the colour, then writes the
+answer into the one ordering Bridge does respect — the filename.
+
+Point it at a folder, press one button, and the grid rearranges itself.
 
 ![Adobe Bridge showing 1,559 images in colour order](documents/assets/Bridge.png)
 
@@ -25,6 +36,9 @@ ramp dark to light, then hand over to the golds.*
 - [How fast it is](#how-fast-it-is)
 - [What Adobe Bridge will not let you do](#what-adobe-bridge-will-not-let-you-do)
 - [For developers](#for-developers)
+- [Licence](#licence)
+
+**Version 0.1.1** · MIT licence · Adobe Bridge 2026 (16.x), macOS
 
 ---
 
@@ -224,7 +238,79 @@ Neutral images use `Z<lightness>` instead of a family number, so they sort last.
 into the file's XMP as `colorxbridge:originalName`. Undo reads it back, so it is
 exact even if the prefix format later changes. Pixels are never touched.
 
-### 9. Judge it by eye. The metrics lie.
+### 9. What this is built on
+
+None of the machinery here is novel. It is an assembly of well-established
+pieces, and it is worth being specific about which:
+
+**The colour space — OKLab / OKLCH.**
+Björn Ottosson, *A perceptual color space for image processing* (2020),
+<https://bottosson.github.io/posts/oklab/>. A Lab-type space fitted so that
+Euclidean distance approximates perceived difference, without CIELAB's
+well-known blue-hue non-uniformity. Chosen over CIELAB because hue lines stay
+straight — essential when you are grouping *by* hue — and over CIEDE2000
+because that is a distance formula, not a space: you cannot average in it, and
+clustering needs to average. The sRGB↔OKLab matrices in `ColorEngine.js` are
+Ottosson's.
+
+**Palette extraction — k-means with k-means++ seeding.**
+Lloyd's algorithm (S. Lloyd, *Least squares quantization in PCM*, IEEE
+Transactions on Information Theory 28(2), 1982; work from 1957), seeded by
+D. Arthur & S. Vassilvitskii, *k-means++: The Advantages of Careful Seeding*,
+SODA 2007. Plain random seeding gives a different palette on every run, which
+would reorder the library each time you pressed the button; k-means++ picks
+spread-out seeds by squared-distance sampling, and this implementation drives
+it from a seeded PRNG so a given image always yields the same palette.
+Clustering runs in OKLab, so a cluster boundary falls where the eye sees one.
+
+**Palette-to-palette distance — a chamfer approximation of Earth Mover's
+Distance.**
+The full EMD for colour signatures is Y. Rubner, C. Tomasi & L. Guibas,
+*The Earth Mover's Distance as a Metric for Image Retrieval*, IJCV 40(2), 2000.
+Solving the transport problem exactly is far too slow for a million pairs, so
+`similarity.js` uses the standard cheap stand-in: for every colour in A take
+its nearest counterpart in B weighted by A's share, then the same from B to A,
+and average. Same intuition — how far would you have to move A's colours to
+land on B's — without the linear program.
+
+**Grouping palettes — k-medoids (PAM).**
+L. Kaufman & P. Rousseeuw, *Finding Groups in Data* (1990). Medoids rather than
+means because the "average of two palettes" is not a palette; a medoid is a
+real image from the set.
+
+**Path refinement — 2-opt.**
+G. A. Croes, *A Method for Solving Traveling-Salesman Problems*, Operations
+Research 6(6), 1958. Greedy nearest-neighbour ordering strands images and has
+to leap back for them; 2-opt reverses a segment when that shortens the path.
+Applied within a sliding window to keep it linear.
+
+**The ordering strategy itself — hue, then lightness.**
+This is the HCL pattern that colour cartography settled on long ago, and it
+predates computers: Munsell's colour order system (1905) arranges colour on
+exactly these three axes — hue, value, chroma. For the modern statistical
+treatment see A. Zeileis, K. Hornik & P. Murrell, *Escaping RGBland: Selecting
+colors for statistical graphics*, Computational Statistics & Data Analysis
+53(9), 2009. Flattening three perceptual dimensions onto one line must
+sacrifice one, and chroma is the one you notice least.
+
+**Why the families are coarse.**
+B. Berlin & P. Kay, *Basic Color Terms: Their Universality and Evolution*
+(1969), which found that languages draw from a small shared set of basic colour
+terms. Six families is in that territory. A finer taxonomy would be more
+precise and less useful — the point is a grid you can read at a glance, not a
+correct answer.
+
+**One approach deliberately not taken: space-filling curves.**
+Ordering colours along a Hilbert curve through RGB is the classic trick, and it
+does produce a continuous path. But it optimises *local* continuity at the
+expense of any global structure — reds end up in several places, because the
+curve visits the red region more than once. Measured here, a single
+nearest-neighbour path over the whole library changed colour region 722 times
+across only nine regions. Every individual step was short, so the local metric
+looked excellent while the grid still read as scattered. Cluster first, then
+order the clusters.
+
+### 10. Judge it by eye. The metrics lie.
 
 Three separate numeric metrics gave confident, wrong answers during development:
 mean neighbour distance, colour-region changes, and a lightness-reversal count
@@ -240,8 +326,20 @@ seconds. **No ordering change ships here without one.**
 
 ![The BridgeColorShorter panel](documents/assets/BridgeColorShorter.png)
 
-*The panel. Everything between the header and the status line scrolls, so the
-controls stay reachable however short you drag it.*
+*The panel before anything has been analysed. Everything between the header and
+the status line scrolls, so the controls stay reachable however short you drag
+it.*
+
+![The panel after analysing 1,559 images](documents/assets/ColorResults.png)
+
+*The same panel after analysing 1,559 images. **Colours** is every colour family
+found, largest first — 544 near-blacks, 312 tans, 166 deep blues — and clicking
+one filters everything below to just those images. Each row in **Results** shows
+its representative colour as a chip, the family name and OKLCH coordinates, the
+share of the frame it occupies, and the full palette as a strip. Reading down,
+`L064 → L064 → L063 → L063` is the lightness ramp doing its job. The status line
+reads `1559 reused`: the palettes came back out of the files themselves, so this
+took about five seconds rather than a minute.*
 
 ### Getting started
 
@@ -482,3 +580,20 @@ compared character-for-character by a test — they drifted apart once already.
 project's former name on purpose. It identifies data already embedded in real
 files, including the original filenames Undo depends on. Renaming it would
 orphan every palette ever written. A namespace is an identifier, not a brand.
+
+The `version` property inside that namespace is `2.0` and is the schema version
+of the *stored data* — how to read the palette string back — not the version of
+the panel. Bumping it with a release would strand every palette already
+written.
+
+---
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
+
+Copyright © 2026 Charis Tsevis.
+
+The signed `.zxp` carries a self-signed certificate, so an installer will
+report the publisher as unidentified. That means nobody paid a certificate
+authority — not that anything is wrong with the package.
