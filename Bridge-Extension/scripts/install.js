@@ -108,7 +108,7 @@ function enableDebugMode() {
 // Copy
 // ---------------------------------------------------------------------------
 
-const SKIP = new Set(['.DS_Store', 'Thumbs.db', 'node_modules', '.git', '_legacy']);
+const SKIP = new Set(['.DS_Store', 'Thumbs.db', 'node_modules', '.git']);
 
 function copyTree(src, dest) {
   const stat = fs.statSync(src);

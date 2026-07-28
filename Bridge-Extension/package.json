@@ -1,33 +1,21 @@
 {
   "name": "colorxbridge",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Search & Sort by Color for Adobe Bridge",
-  "author": "ColorXBridge Team",
   "license": "MIT",
-  "main": "js/main.js",
+  "private": true,
+  "comment": "No dependencies by design. The panel runs inside CEP and uses only Node builtins (fs, os, path, child_process); the tests use node:test, which ships with Node.",
   "scripts": {
-    "dev": "node scripts/watch.js",
+    "test": "node --test \"test/**/*.test.js\"",
     "build": "node scripts/build.js",
     "build:zxp": "node scripts/build.js --zxp",
-    "install": "node scripts/install.js",
+    "install-panel": "node scripts/install.js",
     "uninstall": "node scripts/install.js --uninstall",
     "enable-cep": "node scripts/enable-cep.js",
     "disable-cep": "node scripts/enable-cep.js --disable",
     "status": "node scripts/install.js --status",
     "icons": "node scripts/generate-icons.js",
-    "test": "jest test/",
-    "lint": "eslint js/"
-  },
-  "dependencies": {
-    "color-thief": "^2.4.0",
-    "sharp": "^0.33.2",
-    "better-sqlite3": "^9.4.3",
-    "crypto-js": "^4.2.0"
-  },
-  "devDependencies": {
-    "jest": "^29.7.0",
-    "eslint": "^8.57.0",
-    "zx": "^7.2.3"
+    "fixtures": "node scripts/make-fixtures.js"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -41,13 +29,5 @@
     "image",
     "organization",
     "xmp"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/colorxbridge/colorxbridge"
-  },
-  "bugs": {
-    "url": "https://github.com/colorxbridge/colorxbridge/issues"
-  },
-  "homepage": "https://github.com/colorxbridge/colorxbridge#readme"
+  ]
 }
