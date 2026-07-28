@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ExtensionManifest Version="7.0"
-                   ExtensionBundleId="com.colorxbridge.panel"
+                   ExtensionBundleId="com.bridgecolorshorter.panel"
                    ExtensionBundleVersion="2.0.0"
-                   ExtensionBundleName="ColorXBridge"
+                   ExtensionBundleName="BridgeColorShorter"
                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
   <ExtensionList>
-    <Extension Id="com.colorxbridge.panel" Version="2.0.0" />
+    <Extension Id="com.bridgecolorshorter.panel" Version="2.0.0" />
   </ExtensionList>
 
   <ExecutionEnvironment>
@@ -23,7 +23,7 @@
   </ExecutionEnvironment>
 
   <DispatchInfoList>
-    <Extension Id="com.colorxbridge.panel">
+    <Extension Id="com.bridgecolorshorter.panel">
       <DispatchInfo>
         <Resources>
           <MainPath>./index.html</MainPath>
@@ -32,14 +32,14 @@
             <Parameter>--mixed-context</Parameter>
             <Parameter>--allow-file-access-from-files</Parameter>
           </CEFCommandLine>
-          <ScriptPath>./jsx/ColorXBridge.jsx</ScriptPath>
+          <ScriptPath>./jsx/BridgeColorShorter.jsx</ScriptPath>
         </Resources>
         <Lifecycle>
           <AutoVisible>true</AutoVisible>
         </Lifecycle>
         <UI>
           <Type>Panel</Type>
-          <Menu>ColorXBridge</Menu>
+          <Menu>BridgeColorShorter</Menu>
           <Geometry>
             <Size>
               <Height>560</Height>

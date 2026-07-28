@@ -3,7 +3,7 @@
  * order into Bridge's own grid.
  *
  * Split out of app.js so it can be tested offline. The host script
- * (jsx/ColorXBridge.jsx) runs in a separate ExtendScript engine and cannot
+ * (jsx/BridgeColorShorter.jsx) runs in a separate ExtendScript engine and cannot
  * load this file, so it keeps its own copy of PREFIX_SOURCE — and
  * test/naming.test.js asserts the two are character-for-character identical.
  * They failed to stay in sync once already: the panel widened the sequence
@@ -24,7 +24,7 @@
   var PREFIX_SOURCE = '^(?:[A-Z]\\d{3,}(?:-[A-Z]\\d{3,})*_|\\d{4,}_)';
   var PREFIX_RE = new RegExp(PREFIX_SOURCE);
 
-  /** Remove a ColorXBridge prefix, leaving the user's own filename. */
+  /** Remove a BridgeColorShorter prefix, leaving the user's own filename. */
   function stripPrefix(name) {
     return String(name).replace(PREFIX_RE, '');
   }

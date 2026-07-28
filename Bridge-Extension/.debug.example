@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ExtensionList>
-  <Extension Id="com.colorxbridge.panel">
+  <Extension Id="com.bridgecolorshorter.panel">
     <HostList>
       <Host Name="KBRG" Port="8088"/>
     </HostList>

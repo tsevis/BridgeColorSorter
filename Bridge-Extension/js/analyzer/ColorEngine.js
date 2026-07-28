@@ -1,5 +1,5 @@
 /**
- * ColorEngine - genuine colour extraction for ColorXBridge.
+ * ColorEngine - genuine colour extraction for BridgeColorShorter.
  *
  * Pixels are decoded by Chromium itself: the file is read from disk with
  * Node, wrapped in a Blob URL (same-origin, so the canvas is never tainted)

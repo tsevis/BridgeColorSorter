@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * ColorXBridge installer.
+ * BridgeColorShorter installer.
  *
  *   node scripts/install.js             install into the user CEP folder
  *   node scripts/install.js --status    report what is installed
@@ -21,7 +21,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const NAME = 'ColorXBridge';
+const NAME = 'BridgeColorShorter';
 const PAYLOAD = ['CSXS', 'index.html', 'css', 'js', 'jsx', 'assets'];
 /** CSXS preference domains across the Bridge/CEP versions in the wild. */
 const CSXS_VERSIONS = [8, 9, 10, 11, 12, 13, 14, 15];
@@ -127,7 +127,7 @@ function copyTree(src, dest) {
 function install() {
   const info = validateSource();
 
-  console.log('ColorXBridge installer');
+  console.log('BridgeColorShorter installer');
   console.log('  bundle : ' + info.bundleId + ' v' + info.version);
   console.log('  target : ' + TARGET);
 
@@ -159,7 +159,7 @@ function install() {
 
   console.log('\n  Installed.\n');
   console.log('  Next: restart Adobe Bridge, then open');
-  console.log('        Window > Extensions > ColorXBridge\n');
+  console.log('        Window > Extensions > BridgeColorShorter\n');
 }
 
 function uninstall() {
@@ -172,7 +172,7 @@ function uninstall() {
 }
 
 function status() {
-  console.log('ColorXBridge status');
+  console.log('BridgeColorShorter status');
   console.log('  target : ' + TARGET);
 
   const installed = fs.existsSync(path.join(TARGET, 'CSXS', 'manifest.xml'));

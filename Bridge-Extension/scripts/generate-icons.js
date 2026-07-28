@@ -1,6 +1,6 @@
 /**
  * Simple PNG Icon Generator
- * Creates minimal PNG icons for ColorXBridge extension
+ * Creates minimal PNG icons for BridgeColorShorter extension
  * Uses pure JavaScript - no external dependencies
  */
 
@@ -269,7 +269,7 @@ function generateIconPixels(size, variant) {
  */
 function generateAllIcons() {
   console.log('========================================');
-  console.log('  ColorXBridge Icon Generator');
+  console.log('  BridgeColorShorter Icon Generator');
   console.log('========================================\n');
   
   const icons = [

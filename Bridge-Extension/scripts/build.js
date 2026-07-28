@@ -1,5 +1,5 @@
 /**
- * ColorXBridge Build Script
+ * BridgeColorShorter Build Script
  * Packages the extension for distribution
  * 
  * Usage:
@@ -15,8 +15,8 @@ const { execSync, spawnSync } = require('child_process');
 // Configuration
 const PROJECT_ROOT = path.join(__dirname, '..');
 const OUTPUT_DIR = path.join(PROJECT_ROOT, 'dist');
-const ZXP_OUTPUT = path.join(PROJECT_ROOT, 'ColorXBridge.zxp');
-const EXTENSION_ID = 'com.colorxbridge.panel';
+const ZXP_OUTPUT = path.join(PROJECT_ROOT, 'BridgeColorShorter.zxp');
+const EXTENSION_ID = 'com.bridgecolorshorter.panel';
 
 // Files to include in the build
 const FILES_TO_COPY = [
@@ -133,7 +133,7 @@ function createZXP() {
     log('ZXPSignCmd not found. Creating unsigned package.');
     log('To sign the extension:');
     log('  1. Download ZXPSignCmd from: https://github.com/Adobe-CEP/Sample-Extensions/tree/master/ZXPSignCmd');
-    log('  2. Run: ZXPSignCmd -sign dist ColorXBridge.zxp -certId "YourName" -password "YourPassword"');
+    log('  2. Run: ZXPSignCmd -sign dist BridgeColorShorter.zxp -certId "YourName" -password "YourPassword"');
     
     // Create a simple zip as placeholder
     createZip();
@@ -141,7 +141,7 @@ function createZXP() {
   }
   
   // Sign and create ZXP
-  const certId = process.env.ZXP_CERT_ID || 'ColorXBridge';
+  const certId = process.env.ZXP_CERT_ID || 'BridgeColorShorter';
   const password = process.env.ZXP_PASSWORD || '';
   
   const args = ['-sign', OUTPUT_DIR, ZXP_OUTPUT];
@@ -163,7 +163,7 @@ function createZXP() {
 function createZip() {
   log('Creating ZIP package (unsigned)...');
   
-  const zipPath = path.join(PROJECT_ROOT, 'ColorXBridge-unsigned.zip');
+  const zipPath = path.join(PROJECT_ROOT, 'BridgeColorShorter-unsigned.zip');
   
   try {
     // Use system zip command
@@ -184,8 +184,8 @@ function createZip() {
     // Fallback: just notify user
     log('ZIP creation requires "zip" command. Manual packaging instructions:');
     log(`  1. Navigate to: ${OUTPUT_DIR}`);
-    log('  2. Zip all files into ColorXBridge.zip');
-    log('  3. Rename to ColorXBridge.zxp (for testing)');
+    log('  2. Zip all files into BridgeColorShorter.zip');
+    log('  3. Rename to BridgeColorShorter.zxp (for testing)');
   }
 }
 
@@ -207,7 +207,7 @@ function showInstallInstructions() {
   console.log('   Or run: node scripts/install.js\n');
   
   console.log('3. Restart Adobe Bridge');
-  console.log('4. Open: Window > Extensions > ColorXBridge\n');
+  console.log('4. Open: Window > Extensions > BridgeColorShorter\n');
   
   console.log('Option 2: ZXP Installation (Production)');
   console.log('---------------------------------------');
@@ -223,7 +223,7 @@ function showInstallInstructions() {
 
 function build(options) {
   console.log('========================================');
-  console.log('  ColorXBridge Build Script');
+  console.log('  BridgeColorShorter Build Script');
   console.log('  Version: 1.0.0');
   console.log('========================================\n');
   
