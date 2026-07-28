@@ -84,6 +84,26 @@ panel to other machines, sign it as a `.zxp` instead of relying on debug mode.
    `http://ns.adobe.com/colorxbridge/1.0/` — embedded where the format allows,
    otherwise as an `.xmp` sidecar.
 
+### Reusing saved colour data
+
+Analysis dominates the runtime — every image must be decoded and clustered — yet
+the answer is already embedded in each file from the previous run. Before
+analysing, the panel reads the stored palettes back in a **single batched call**
+and only analyses what is missing. A folder that has been analysed once
+re-orders in seconds instead of minutes.
+
+The batching matters: one `evalScript` for the whole folder, not one per file.
+At a thousand files the round trip would otherwise cost more than the work.
+
+Records are rebuilt from the stored `palette` string (`#rrggbb|dominance`
+pairs), with HSL and OKLCH recomputed from the hex. Verified against a real
+1,559-image folder: all 1,559 reconstruct, dominance sums land within 0.999–1.002
+of unity, and the resulting order is deterministic.
+
+Only newly analysed files are written back, so reusing costs no writes at all.
+**Settings → "Re-analyse, ignoring saved colour data"** forces a full pass when
+the analysis settings change.
+
 ### Stored XMP properties
 
 `dominantHex`, `dominantHue`, `dominantSaturation`, `dominantLightness`,

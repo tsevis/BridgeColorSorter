@@ -45,7 +45,8 @@
       grouping: 'coarse',
       serpentine: true,
       writeXmp: true,
-      writeKeywords: true // additive; drives Bridge's Filter panel
+      writeKeywords: true, // additive; drives Bridge's Filter panel
+      forceReanalyse: false
     }
   };
 
@@ -160,6 +161,82 @@
     });
   }
 
+  /** Rebuild a full record from the compact form stored in XMP. */
+  function recordFromStored(filePath, stored) {
+    function colourFromHex(hex, dominance) {
+      var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+      if (!m) return null;
+      var rgb = [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+      return {
+        hex: '#' + m[1] + m[2] + m[3],
+        rgb: rgb,
+        hsl: ColorEngine.rgbToHsl(rgb[0], rgb[1], rgb[2]),
+        oklch: ColorEngine.rgbToOklch(rgb[0], rgb[1], rgb[2]),
+        dominance: dominance
+      };
+    }
+
+    var palette = [];
+    String(stored.palette || '').split(',').forEach(function (part) {
+      var bits = part.split('|');
+      if (bits.length !== 2) return;
+      var c = colourFromHex(bits[0], parseFloat(bits[1]) || 0);
+      if (c) palette.push(c);
+    });
+
+    if (palette.length === 0) return null;
+
+    var rec = {
+      filePath: filePath,
+      palette: palette,
+      dominant: palette[0],
+      metadata: { analyzedAt: stored.analyzedAt, fromCache: true }
+    };
+    rec.representative =
+      ColorEngine.pickRepresentative(palette, state.settings.representative);
+    rec.colorName = ColorNames.nameFor(repOf(rec).hsl);
+    return rec;
+  }
+
+  /**
+   * Fetch colour data already embedded in the files.
+   *
+   * Analysis dominates the runtime, and the answer is normally sitting in each
+   * file's XMP from the previous run. Reading it back turns a several-minute
+   * re-analysis of a large folder into a few seconds.
+   */
+  function loadStored(files) {
+    if (state.settings.forceReanalyse) {
+      return Promise.resolve({ cached: {}, remaining: files });
+    }
+
+    var payload;
+    try {
+      payload = writeTempJson('paths.json', files);
+    } catch (e) {
+      return Promise.resolve({ cached: {}, remaining: files });
+    }
+
+    return evalScript('cxbReadColorBatch("' + esc(payload) + '")')
+      .then(function (reply) {
+        if (!reply.success) return { cached: {}, remaining: files };
+
+        var cached = {};
+        var remaining = [];
+
+        files.forEach(function (f) {
+          var stored = reply.data ? reply.data[f] : null;
+          var rec = stored ? recordFromStored(f, stored) : null;
+          if (rec) cached[f] = rec; else remaining.push(f);
+        });
+
+        return { cached: cached, remaining: remaining };
+      })
+      .catch(function () {
+        return { cached: {}, remaining: files };
+      });
+  }
+
   function collectFiles(which) {
     var call = which === 'folder' ? 'cxbGetFolderImages()' : 'cxbGetSelection()';
     return evalScript(call).then(function (reply) {
@@ -181,10 +258,40 @@
             : 'Nothing selected in Bridge. Select some images first.');
         }
 
-        setStatus('Analysing ' + files.length + ' image' + (files.length === 1 ? '' : 's') + '…');
-        setProgress(0, files.length);
+        setStatus('Checking ' + files.length + ' file' +
+          (files.length === 1 ? '' : 's') + ' for saved colour data…');
 
-        return analyzeAll(files, setProgress);
+        return loadStored(files).then(function (split) {
+          var todo = split.remaining;
+
+          if (todo.length === 0) {
+            setStatus('Loaded ' + files.length + ' from saved data');
+            return { results: split.cached, errors: [], reused: files.length, fresh: 0 };
+          }
+
+          setStatus((split.remaining.length === files.length
+            ? 'Analysing ' + todo.length
+            : 'Reusing ' + (files.length - todo.length) + ', analysing ' + todo.length) +
+            ' image' + (todo.length === 1 ? '' : 's') + '…');
+          setProgress(0, todo.length);
+
+          return analyzeAll(todo, setProgress).then(function (outcome) {
+            var merged = {};
+            for (var a in split.cached) {
+              if (split.cached.hasOwnProperty(a)) merged[a] = split.cached[a];
+            }
+            for (var b in outcome.results) {
+              if (outcome.results.hasOwnProperty(b)) merged[b] = outcome.results[b];
+            }
+            return {
+              results: merged,
+              errors: outcome.errors,
+              reused: Object.keys(split.cached).length,
+              fresh: outcome.results,
+              freshCount: Object.keys(outcome.results).length
+            };
+          });
+        });
       })
       .then(function (outcome) {
         var count = Object.keys(outcome.results).length;
@@ -202,16 +309,21 @@
         renderResults();
         updateRenamePreview();
 
-        var note = count + ' analysed';
+        var note = outcome.reused
+          ? outcome.reused + ' reused' +
+            (outcome.freshCount ? ', ' + outcome.freshCount + ' analysed' : '')
+          : count + ' analysed';
         if (outcome.errors.length) note += ', ' + outcome.errors.length + ' skipped';
 
-        if (!state.settings.writeXmp) {
-          setStatus(note + ' (metadata writing off)', 'ok');
+        // Only newly analysed files need writing; the rest came from XMP.
+        var toWrite = outcome.fresh && typeof outcome.fresh === 'object' ? outcome.fresh : {};
+        if (!state.settings.writeXmp || Object.keys(toWrite).length === 0) {
+          setStatus(note, 'ok');
           return null;
         }
 
         setStatus(note + ' — writing metadata…');
-        return pushToBridge(outcome.results).then(function (msg) {
+        return pushToBridge(toWrite).then(function (msg) {
           setStatus(note + ' — ' + msg, 'ok');
         });
       })
@@ -1106,6 +1218,7 @@
 
     bindToggle('writeXmpToggle', 'writeXmp');
     bindToggle('writeKeywordsToggle', 'writeKeywords');
+    bindToggle('forceReanalyseToggle', 'forceReanalyse');
   }
 
   function bindToggle(id, key, after) {

@@ -394,6 +394,63 @@ function cxbApplyResults(jsonPath) {
   }
 }
 
+/**
+ * Read stored colour data for many files at once.
+ *
+ * Analysis is by far the slowest step - every image has to be decoded and
+ * clustered - yet the result is already embedded in each file from the previous
+ * run. Reading it back turns a multi-minute re-analysis into a few seconds.
+ *
+ * Batched deliberately: one evalScript for the whole folder rather than one per
+ * file, because the round trip dominates at a thousand files.
+ *
+ * @param {string} jsonPath temp file holding an array of absolute paths
+ * @returns {string} JSON { data: { path: {...} }, hits, misses }
+ */
+function cxbReadColorBatch(jsonPath) {
+  try {
+    cxbLoadXMP();
+
+    var paths = eval("(" + cxbReadFile(jsonPath) + ")");
+    var data = {};
+    var hits = 0;
+    var misses = 0;
+
+    for (var i = 0; i < paths.length; i++) {
+      var p = paths[i];
+      var got = null;
+
+      try {
+        var xf = new XMPFile(p, cxbFormatFor(cxbExtOf(p)), XMPConst.OPEN_FOR_READ);
+        var xmp = xf.getXMP();
+
+        var hex = xmp.getProperty(CXB_NS, "dominantHex");
+        var palette = xmp.getProperty(CXB_NS, "palette");
+        var version = xmp.getProperty(CXB_NS, "version");
+
+        if (hex && palette) {
+          got = {
+            hex: String(hex),
+            palette: String(palette),
+            colorName: String(xmp.getProperty(CXB_NS, "colorName") || ""),
+            analyzedAt: String(xmp.getProperty(CXB_NS, "analyzedAt") || ""),
+            version: String(version || "")
+          };
+        }
+        xf.closeFile(0);
+      } catch (e) {
+        // Unreadable or no XMP: treat as a miss and let the panel analyse it.
+      }
+
+      if (got) { data[p] = got; hits++; } else { misses++; }
+    }
+
+    return cxbJSON({ success: true, data: data, hits: hits, misses: misses });
+  } catch (e) {
+    return cxbErr(e, "cxbReadColorBatch");
+  }
+}
+
 /** Read previously stored colour data for one file. */
 function cxbReadColor(filePath) {
   try {
