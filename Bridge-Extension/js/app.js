@@ -478,8 +478,11 @@
   // Sorting
   //= ==========================================================================
 
-  /** Below this OKLCH chroma a colour has no meaningful hue. */
-  var ACHROMATIC_CHROMA = 8;
+  // Below this OKLCH chroma a colour has no hue worth grouping by. Defined in
+  // js/hueBands.js and read from there rather than repeated: a second copy of
+  // a threshold is a second thing to forget to change, which is exactly how
+  // the prefix pattern drifted apart from the host script's copy.
+  var ACHROMATIC_CHROMA = HueBands.ACHROMATIC_CHROMA;
 
   /** Perceptual coordinates of a colour: L 0-100, C 0-100, h 0-360. */
   function lch(colour) {

@@ -9,6 +9,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const HueBands = require('../js/hueBands.js');
 
@@ -224,6 +226,35 @@ test.describe('perceptual family bands', () => {
       assert.strictEqual(HueBands.familyOf(angle), family,
         `${css} at ${angle}deg should be ${family}`);
     }
+  });
+});
+
+test.describe('the achromatic cutoff', () => {
+  test('is defined once, and the panel reads it rather than repeating it', () => {
+    // A threshold with two copies is a threshold that will drift. The prefix
+    // pattern already did exactly that between the panel and the host script.
+    const panel = fs.readFileSync(
+      path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
+    assert.ok(!/var ACHROMATIC_CHROMA = \d/.test(panel),
+      'js/app.js must not define its own achromatic cutoff');
+    assert.ok(/ACHROMATIC_CHROMA = HueBands\.ACHROMATIC_CHROMA/.test(panel),
+      'js/app.js must read the cutoff from HueBands');
+  });
+
+  test('sits above the representative chroma floor, not at it', () => {
+    // Two different questions. The representative floor asks which cluster
+    // stands for an image; a muted red still represents a muted photograph.
+    // This asks whether that answer is convincing enough to anchor a colour
+    // family, which is a higher bar — a mauve at chroma 14 is not magenta.
+    const engine = fs.readFileSync(
+      path.join(__dirname, '..', 'js', 'analyzer', 'ColorEngine.js'), 'utf8');
+    const floor = Number(/var MIN_CHROMA = (\d+)/.exec(engine)[1]);
+
+    assert.ok(HueBands.ACHROMATIC_CHROMA > floor,
+      `grouping cutoff ${HueBands.ACHROMATIC_CHROMA} must exceed the ` +
+      `representative floor ${floor}`);
+    assert.ok(HueBands.ACHROMATIC_CHROMA <= 25,
+      'above about 25 this would start calling genuinely coloured images grey');
   });
 });
 

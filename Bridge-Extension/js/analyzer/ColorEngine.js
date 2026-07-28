@@ -512,7 +512,17 @@
       };
     }
 
-    var MIN_CHROMA = 8;    // OKLCH chroma below this reads as neutral
+    // OKLCH chroma below this reads as neutral, so a cluster under it is not a
+    // candidate to represent the image.
+    //
+    // Deliberately lower than the achromatic cutoff used for *grouping*
+    // (HueBands.ACHROMATIC_CHROMA). These answer different questions: this one
+    // asks which cluster best stands for an image, and a muted red is still
+    // the answer for a muted red photograph. The grouping cutoff asks whether
+    // that answer is colourful enough to anchor a colour family, which is a
+    // higher bar. Raising this one to match would start throwing away real
+    // colours and falling back to the dominant grey wall.
+    var MIN_CHROMA = 8;
     var MIN_SHARE = 0.08;  // ignore specks; they are not what the image "is"
 
     var best = null;

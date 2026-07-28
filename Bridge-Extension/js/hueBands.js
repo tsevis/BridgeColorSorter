@@ -32,8 +32,34 @@
 (function (global) {
   'use strict';
 
-  /** Below this OKLCH chroma a colour has no meaningful hue at all. */
-  var ACHROMATIC_CHROMA = 8;
+  /**
+   * Below this OKLCH chroma (0-100 scale) a colour has no hue worth grouping
+   * by, so the image goes into the neutral band and is ordered by lightness.
+   *
+   * This is a *grouping* threshold, not a perceptual one, and the two differ.
+   * The perceptual floor — below which a colour genuinely reads as grey — is
+   * about 8: Nino reaches it independently at a native OKLCH chroma of 0.025,
+   * which is 7.6 here. But grouping asks a harder question: is this hue stable
+   * and convincing enough to put the image in a colour family? A washed-out
+   * mauve at chroma 14 has a hue, and it is not one anybody would call
+   * magenta.
+   *
+   * 18 comes from two of Nino's constants that land on the same place from
+   * different directions. Its `saturationBand` calls anything below native
+   * 0.06 "muted" (18.2 here), and its neutral-block cutoff for whole-palette
+   * ordering is 0.059 (17.9). Anything a naming scheme would only call
+   * "muted" has no business anchoring a colour family.
+   *
+   * Measured on the 1,559-image folder this moves the neutral band from 6
+   * images to 281 — enough to ramp smoothly instead of jumping 34 lightness
+   * points between the only two greys in the middle of the range.
+   *
+   * NOTE this is deliberately NOT the same as ColorEngine's representative
+   * chroma floor, which is still 8. That one asks which cluster best stands
+   * for an image; this one asks whether the answer is colourful enough to
+   * group on. Raising both together would start discarding real colours.
+   */
+  var ACHROMATIC_CHROMA = 18;
 
   /**
    * How prominent a valley must be, as a fraction of the busiest hue, before it
