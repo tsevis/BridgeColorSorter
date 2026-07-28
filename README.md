@@ -54,12 +54,13 @@ rather than a silent success.
 cd Bridge-Extension && npm test
 ```
 
-126 tests, no dependencies — `node --test` and nothing else. They run without
+168 tests, no dependencies — `node --test` and nothing else. They run without
 Bridge, without Chromium and without network, in under a second.
 
 They cover the colour engine (the composition claims below are executable, not
 prose), the clustering output frozen against a golden fixture, similarity
-ordering, colour naming, the stored-palette format, and filename prefixing.
+ordering, hue banding, colour naming, the stored-palette format, filename
+prefixing, and the structure of the worker analysis path.
 
 Several are guards against faults that have actually happened here, and each
 one has been checked to fail when its fault is reintroduced:
@@ -76,6 +77,13 @@ one has been checked to fail when its fault is reintroduced:
   `app.document.selections` (see below).
 - Every host entry point must return `cxbJSON(...)` and catch its own errors,
   or the panel gets `EvalScript error.` and a dead button.
+- Renaming must be scoped to the folder Bridge is showing.
+- The worker cannot define its own `extractPalette`, and its pixel-sampling
+  rules must match `decode()` exactly.
+- **Every control `app.js` wires up must exist in `index.html`.** Element
+  lookups are guarded with `if (el)`, so a control could disappear from the
+  markup and nothing would complain — three had, including the ⇅ reverse
+  button this README documents.
 
 `test/xmp-constants.test.jsx` is separate: it needs the real XMP library, so it
 runs inside Bridge from the panel's console via `cxbTestXmpApi()`.
@@ -200,7 +208,9 @@ already using. Only the filename can carry an arbitrary order.
 `xmp:Label` could also carry a colour, but Bridge has just **five label slots**
 and a file has exactly one label — which belongs to your own triage
 (Select / Approved / Review). Overwriting that destroys real work to gain lumpy
-five-bucket grouping, so it is off by default.
+five-bucket grouping, so **the panel does not offer it.** The host script keeps
+`cxbApplyLabels()` for anyone who decides the trade is worth it; there is
+deliberately no button.
 
 ### Ordering by whole-palette similarity
 
@@ -409,7 +419,8 @@ Measured in the panel over CEP remote debugging, on the 1,559-image folder
 | Step | Cost | Per file |
 |---|---|---|
 | Read saved colour data for 1,559 files | **4.8 s** | 3 ms |
-| Analyse (decode + cluster) | — | **41 ms** |
+| Analyse 1,559 from scratch, worker pool | **7.3 s** | **4.8 ms** |
+| Analyse, single thread (the fallback) | ~64 s | 41 ms |
 | Write XMP + keywords, 400 files | **457 ms** | **1.1 ms** |
 | Number files, names already recorded | **396 ms** / 400 | 1 ms |
 | Number files, first time | 1.8 s / 400 | 4.5 ms |
@@ -421,17 +432,53 @@ Two results are worth stating plainly because they contradict what was assumed:
 **The XMP write is not the slow step.** It costs about 1.1 ms per file — under
 two seconds for the whole 1,559-image folder. Analysis is ~40× more expensive.
 
-**Analysis concurrency does not matter.** It is fixed at 4 in `analyzeAll`, and
-that number was never tuned — but tuning it achieves nothing. Concurrency 1, 2,
-4, 8, 12, 16 and 20 all land within noise of each other at ~41 ms per image,
-because almost none of the work is concurrent: reading the file, building the
-Blob, `drawImage`, `getImageData` and the clustering all run on the panel's
-single JS thread. Only Chromium's own decode is off-thread, and it is a small
-share of the 25 ms "decode" figure.
+**Analysis concurrency did not matter — because nothing was concurrent.**
+Levels 1, 2, 4, 8, 12, 16 and 20 all landed within noise of each other at
+~41 ms per image: reading the file, building the Blob, `drawImage`,
+`getImageData` and the clustering all ran on the panel's single JS thread.
+Nineteen of twenty cores sat idle.
 
-So the remaining lever is not the dial — it is **Web Workers**. Nineteen of
-twenty cores are idle during analysis. Moving decode and clustering into
-workers is the change that would matter, and it changes no arithmetic.
+### Web Workers
+
+Analysis now runs across a pool of workers — `hardwareConcurrency - 2`, capped
+at 12, leaving room for the main thread and for Bridge, which is still drawing
+its own grid. The main thread keeps only what needs Node: reading files
+(asynchronously, so I/O overlaps with clustering) and transcoding camera raw
+and PSD through `sips`. Bytes cross as transferable `ArrayBuffer`s, so nothing
+is copied.
+
+| | before | after |
+|---|---|---|
+| Full cold analysis, 1,559 images | ~64 s | **7.3 s** |
+| Per image | 43.8 ms | **4.8 ms** |
+
+**8.8×.** A fresh analysis is now barely slower than reading the cached data
+from XMP (4.8 s), which makes the cache close to redundant.
+
+The worker loads `ColorEngine.js` with `importScripts` and calls the same
+`extractPalette`, so the clustering is not reimplemented — the golden fixture
+guards one function, not two. A test asserts the worker cannot define its own,
+and that its pixel-sampling rules (alpha cutoff, scale, rounding, channel
+order) match `decode()` character for character. They must:
+`extractPalette` seeds its random source from the pixel **count**, so one extra
+or missing pixel silently changes an image's whole palette.
+
+Every failure falls back to a single-threaded analysis — no `Worker` API,
+workers that will not start, a worker that dies, or one file that fails inside
+one.
+
+**Palettes changed, and they got better.** A worker has no DOM, so it decodes
+with `createImageBitmap` + `OffscreenCanvas` rather than `<img>` + `<canvas>`.
+That is not the same picture: downscaling 1024→160 is a 6.4× reduction, and the
+`<img>` path aliases badly. Measured against clustering *every pixel at full
+resolution*, the worker path was closer on all four test images — by 1.5×,
+4.6×, 5.6× and 13.6×. It is not colour management (every `createImageBitmap`
+variant agrees; only `<img>` differs) and `imageSmoothingQuality = 'high'`
+changes nothing.
+
+So this is a fidelity improvement that happens to be 9× faster. It does mean a
+library analysed by the old path should be re-analysed once, or it will hold
+two subtly different kinds of palette.
 
 ### What did help
 

@@ -100,11 +100,15 @@
         </label>
       </div>
 
-      <div class="actions-grid">
+      <div class="sort-row">
         <button id="sortBtn" class="btn btn-small">Sort list</button>
+        <button id="reverseBtn" class="btn btn-small btn-icon"
+                title="Reverse the order — an exact mirror, including tied items">⇅</button>
+      </div>
+      <div class="actions-grid">
         <button id="selectInBridgeBtn" class="btn btn-small">Select in Bridge</button>
-        <button id="renameBtn" class="btn btn-primary btn-small">Number files…</button>
         <button id="undoRenameBtn" class="btn btn-small">Undo rename</button>
+        <button id="renameBtn" class="btn btn-primary btn-small span-2">Number files…</button>
       </div>
       <p id="renamePreview" class="note"></p>
       <p id="sortNote" class="note"></p>
@@ -166,6 +170,7 @@
   <script src="js/storedPalette.js"></script>
   <script src="js/hueBands.js"></script>
   <script src="js/analyzer/ColorEngine.js"></script>
+  <script src="js/analyzer/workerPool.js"></script>
   <script src="js/similarity.js"></script>
   <script src="js/app.js"></script>
 </body>

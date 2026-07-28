@@ -383,6 +383,25 @@ summary {
 }
 
 .actions-grid .btn { flex: initial; width: 100%; }
+.actions-grid .span-2 { grid-column: 1 / -1; }
+
+/* Sort and its reverse belong together: one applies the order, the other
+   mirrors it. The reverse is a fixed-width icon so the pair does not shift
+   when the label beside it changes. */
+.sort-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.sort-row .btn { flex: 1; }
+
+.btn-icon {
+  flex: 0 0 auto !important;
+  width: 38px;
+  font-size: 15px;
+  line-height: 1;
+}
 
 /* ---------- direction toggles ---------- */
 

@@ -137,44 +137,79 @@
   // Analysis
   //= ==========================================================================
 
+  /** Everything a raw {dominant, palette} needs before the panel can use it. */
+  function completeRecord(rec, file) {
+    rec.filePath = file;
+    rec.representative =
+      ColorEngine.pickRepresentative(rec.palette, state.settings.representative);
+    rec.colorName = ColorNames.nameFor((rec.representative || rec.dominant).hsl);
+    return rec;
+  }
+
   /**
-   * How many analyses are in flight at once.
+   * Analyse across a pool of workers, falling back to the main thread.
    *
-   * Measured on the 1,559-image folder, 96-image samples, this machine
-   * (20 cores): concurrency 1, 2, 4, 8, 12, 16 and 20 all land within noise of
-   * each other at ~41 ms per image. It makes no difference, because almost
-   * none of the work is actually concurrent — reading the file, building the
-   * Blob, drawImage, getImageData and the clustering are all on the panel's
-   * single JS thread. Only Chromium's own decode is off-thread, and it is a
-   * small share of the 25 ms "decode" figure.
+   * The fallback matters more than the speed: if workers cannot start, if one
+   * dies, or if a single file fails inside one, that file is analysed here
+   * instead. A panel that quietly analysed nothing would be worse than a slow
+   * one, and this project has already shipped one silent success.
+   */
+  function analyzeAll(files, onProgress) {
+    if (typeof WorkerPool === 'undefined' || typeof Worker !== 'function') {
+      return analyzeOnMainThread(files, onProgress);
+    }
+
+    return WorkerPool.analyzeAll(files, state.settings, onProgress)
+      .then(function (outcome) {
+        var results = {};
+        Object.keys(outcome.results).forEach(function (f) {
+          results[f] = completeRecord(outcome.results[f], f);
+        });
+
+        var stranded = outcome.errors.map(function (e) { return e.file; })
+          .filter(function (f) { return f && !results[f]; });
+
+        if (stranded.length === 0) {
+          return { results: results, errors: outcome.errors, workers: outcome.workers };
+        }
+
+        // Retry whatever the pool could not do, here. Formats Chromium cannot
+        // decode at all will fail again and be reported, which is correct.
+        return analyzeOnMainThread(stranded).then(function (retry) {
+          Object.keys(retry.results).forEach(function (f) { results[f] = retry.results[f]; });
+          return { results: results, errors: retry.errors, workers: outcome.workers };
+        });
+      })
+      .catch(function (err) {
+        setStatus('Workers unavailable (' + err.message + '), analysing on one thread…');
+        return analyzeOnMainThread(files, onProgress);
+      });
+  }
+
+  /**
+   * The single-threaded path, kept as the fallback.
    *
-   * So this number is not tuned, it is irrelevant, and raising it would only
-   * add memory pressure. Four is kept because it bounds how many decoded
-   * images are resident at once. The real lever is moving decode and
-   * clustering into Web Workers, which would put the other 19 cores to work;
-   * that is a change to make deliberately, not by turning this dial.
+   * The concurrency here is close to meaningless - measured at 1, 2, 4, 8, 12,
+   * 16 and 20 it was ~41 ms per image every time, because the file read, the
+   * Blob, drawImage, getImageData and the clustering all run on this one
+   * thread. Four only bounds how many decoded images are resident at once.
    */
   var ANALYSIS_CONCURRENCY = 4;
 
-  /** Run analyses with limited concurrency so the panel stays responsive. */
-  function analyzeAll(files, onProgress) {
+  function analyzeOnMainThread(files, onProgress) {
     var results = {};
     var errors = [];
     var index = 0;
     var done = 0;
     var limit = Math.min(ANALYSIS_CONCURRENCY, files.length);
 
-    function worker() {
+    function runner() {
       if (index >= files.length) return Promise.resolve();
       var file = files[index++];
 
       return ColorEngine.analyze(file, state.settings)
         .then(function (rec) {
-          rec.filePath = file;
-          rec.representative =
-            ColorEngine.pickRepresentative(rec.palette, state.settings.representative);
-          rec.colorName = ColorNames.nameFor((rec.representative || rec.dominant).hsl);
-          results[file] = rec;
+          results[file] = completeRecord(rec, file);
         })
         .catch(function (err) {
           errors.push({ file: file, error: err.message });
@@ -182,15 +217,15 @@
         .then(function () {
           done++;
           if (onProgress) onProgress(done, files.length);
-          return worker();
+          return runner();
         });
     }
 
     var runners = [];
-    for (var i = 0; i < limit; i++) runners.push(worker());
+    for (var i = 0; i < limit; i++) runners.push(runner());
 
     return Promise.all(runners).then(function () {
-      return { results: results, errors: errors };
+      return { results: results, errors: errors, workers: 0 };
     });
   }
 
@@ -1138,69 +1173,6 @@
   }
 
   /**
-   * Group Bridge's own grid by colour using its five label slots.
-   *
-   * Bridge's Sort menu is a fixed enum with no registration API, and Label is
-   * the only field it sorts on that can be made to carry a colour. It
-   * overwrites any existing label, so it confirms first.
-   */
-  function applyColourLabels() {
-    var shown = state.order.filter(function (f) { return passesFilter(state.results[f]); });
-    if (shown.length === 0) {
-      setStatus('Nothing to label — analyse some images first.');
-      return;
-    }
-
-    var items = shown.map(function (f) {
-      var slot = ColorNames.labelFor(state.results[f].dominant.hsl);
-      return {
-        filePath: f,
-        labelText: slot ? slot.defaultText : '',
-        swatch: slot ? slot.swatch : null
-      };
-    });
-
-    var counts = {};
-    items.forEach(function (it) {
-      var k = it.swatch || 'no label (grey/black/white)';
-      counts[k] = (counts[k] || 0) + 1;
-    });
-    var summary = Object.keys(counts).map(function (k) {
-      return '  ' + k + ': ' + counts[k];
-    }).join('\n');
-
-    if (!window.confirm(
-      'Set Bridge labels on ' + shown.length + ' file(s)?\n\n' + summary +
-      '\n\nThis OVERWRITES any existing label. Bridge has only five label ' +
-      'slots, so colours are grouped into five families.')) return;
-
-    var payload;
-    try {
-      payload = writeTempJson('labels.json', items);
-    } catch (e) {
-      setStatus(e.message, 'error');
-      return;
-    }
-
-    setStatus('Writing labels to ' + shown.length + ' file(s)…');
-    evalScript('cxbApplyLabels("' + esc(payload) + '")')
-      .then(function (reply) {
-        if (!reply.success) throw new Error(reply.error || 'label write failed');
-        var msg = reply.written + ' labelled';
-        if (reply.cleared) msg += ', ' + reply.cleared + ' cleared (no hue)';
-        if (reply.failed && reply.failed.length) msg += ', ' + reply.failed.length + ' failed';
-
-        if (reply.sortError) {
-          setStatus(msg + ', but Bridge refused to switch to Sort by Label (' +
-            reply.sortError + '). Set it yourself to see the grouping.', 'error');
-          return;
-        }
-        setStatus(msg + '. Bridge is now sorting by Label.', 'ok');
-      })
-      .catch(function (e) { setStatus(e.message, 'error'); });
-  }
-
-  /**
    * Select everything currently listed, in Bridge's content pane.
    *
    * Not truncated. The old 500-file cap was sized against a crash that turned
@@ -1541,16 +1513,6 @@
     var selectBtn = $('selectInBridgeBtn');
     if (selectBtn) selectBtn.addEventListener('click', selectInBridge);
 
-    var labelsBtn = $('colourLabelsBtn');
-    if (labelsBtn) labelsBtn.addEventListener('click', applyColourLabels);
-
-    var sortSelect = $('sortSelect');
-    if (sortSelect) {
-      sortSelect.addEventListener('change', function () {
-        rebuildOrder();
-        renderResults();
-      });
-    }
 
     var clear = $('clearFilterBtn');
     if (clear) {
