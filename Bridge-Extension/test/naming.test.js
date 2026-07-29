@@ -16,7 +16,7 @@ const path = require('node:path');
 const Naming = require('../js/naming.js');
 
 const read = (...p) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf8');
-const HOST = read('jsx', 'BridgeColorShorter.jsx');
+const HOST = read('jsx', 'BridgeColorSorter.jsx');
 const PANEL = read('js', 'naming.js');
 
 test('the host script and the panel use the identical prefix pattern', () => {
@@ -30,10 +30,10 @@ test('the host script and the panel use the identical prefix pattern', () => {
   const host = /var CXB_PREFIX_SOURCE = '([^']*)';/.exec(HOST);
   const panel = /var PREFIX_SOURCE = '([^']*)';/.exec(PANEL);
 
-  assert.ok(host, 'CXB_PREFIX_SOURCE not found in jsx/BridgeColorShorter.jsx');
+  assert.ok(host, 'CXB_PREFIX_SOURCE not found in jsx/BridgeColorSorter.jsx');
   assert.ok(panel, 'PREFIX_SOURCE not found in js/naming.js');
   assert.strictEqual(host[1], panel[1],
-    'jsx/BridgeColorShorter.jsx and js/naming.js disagree about the prefix pattern');
+    'jsx/BridgeColorSorter.jsx and js/naming.js disagree about the prefix pattern');
 
   // And the panel's literal really is what it compiles at runtime, so the
   // comparison above is about live behaviour rather than two stale strings.

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Package BridgeColorShorter for distribution.
+ * Package BridgeColorSorter for distribution.
  *
  *   node scripts/build.js            stage a validated package in dist/
  *   node scripts/build.js --zxp      stage, then sign it into a .zxp
@@ -33,7 +33,7 @@ const { execFileSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const OUTPUT_DIR = path.join(ROOT, 'dist');
-const NAME = 'BridgeColorShorter';
+const NAME = 'BridgeColorSorter';
 const ZXP_OUTPUT = path.join(ROOT, `${NAME}.zxp`);
 
 /**
@@ -164,8 +164,8 @@ function makeCert(signCmd) {
 
   execFileSync(signCmd, [
     '-selfSignedCert', 'GR', 'Attica',
-    process.env.ZXP_ORG || 'BridgeColorShorter',
-    process.env.ZXP_CERT_ID || 'BridgeColorShorter',
+    process.env.ZXP_ORG || 'BridgeColorSorter',
+    process.env.ZXP_CERT_ID || 'BridgeColorSorter',
     password, CERT
   ], { stdio: 'inherit' });
 

@@ -1,5 +1,5 @@
 /**
- * BridgeColorShorter - ExtendScript host layer (runs inside Adobe Bridge)
+ * BridgeColorSorter - ExtendScript host layer (runs inside Adobe Bridge)
  *
  * Everything the panel needs from Bridge itself lives here: the current
  * selection, XMP read/write, and the color keywords that drive Bridge's
@@ -255,7 +255,7 @@ function cxbApplyProps(xmp, rec) {
  * Write the color family into the keywords Bridge indexes for its Filter
  * panel. Keywords are purely additive, so nothing of the user's is displaced.
  *
- * Previous BridgeColorShorter keywords are pruned first, so re-analyzing a file
+ * Previous BridgeColorSorter keywords are pruned first, so re-analyzing a file
  * replaces its color keyword instead of stacking another one.
  *
  * Deliberately does NOT touch xmp:Label. A file carries exactly one label and
@@ -312,7 +312,7 @@ function cxbSidecarXML(rec, opts) {
   }
 
   return '<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>\n' +
-    '<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="BridgeColorShorter 2.0">\n' +
+    '<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="BridgeColorSorter 2.0">\n' +
     ' <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\n' +
     '  <rdf:Description rdf:about=""\n' +
     '   xmlns:dc="' + NS_DC + '" xmlns:lr="' + NS_LR + '"\n' +
@@ -522,7 +522,7 @@ function cxbReadColorBatch(jsonPath) {
 //
 // The only built-in field that could have carried a color was xmp:Label, and
 // writing to it would destroy the user's own triage state - a file has exactly
-// one label. That trade is not worth making, so BridgeColorShorter does not reorder
+// one label. That trade is not worth making, so BridgeColorSorter does not reorder
 // Bridge's grid at all. It writes color keywords instead, which are additive
 // and drive the Filter panel, and does its own ordering inside the panel.
 

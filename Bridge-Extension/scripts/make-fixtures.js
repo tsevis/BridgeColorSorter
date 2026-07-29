@@ -3,7 +3,7 @@
  * Build a disposable folder of small PNGs for scale testing.
  *
  *   node scripts/make-fixtures.js [dir] [count]
- *   node scripts/make-fixtures.js ~/Desktop/BridgeColorShorter-Scale 400
+ *   node scripts/make-fixtures.js ~/Desktop/BridgeColorSorter-Scale 400
  *
  * A dozen fixtures verify correctness; only a few hundred verify behaviour.
  * Every serious fault in this project - the Bridge crash, the sort quality
@@ -20,7 +20,7 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const OUT = process.argv[2] || '/Users/tsevis/Desktop/BridgeColorShorter-Scale';
+const OUT = process.argv[2] || '/Users/tsevis/Desktop/BridgeColorSorter-Scale';
 const COUNT = Number(process.argv[3] || 400);
 const SIZE = 96;
 

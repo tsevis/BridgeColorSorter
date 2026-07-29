@@ -74,11 +74,11 @@ test('the host script uses the same twelve-entry limit', () => {
   // the cap is duplicated. A mismatch would truncate palettes on write and
   // read them back short.
   const host = fs.readFileSync(
-    path.join(__dirname, '..', 'jsx', 'BridgeColorShorter.jsx'), 'utf8');
+    path.join(__dirname, '..', 'jsx', 'BridgeColorSorter.jsx'), 'utf8');
   const fn = /function cxbPaletteToString\(palette\) \{[\s\S]*?\n\}/.exec(host);
   assert.ok(fn, 'cxbPaletteToString not found');
   assert.ok(/i < 12/.test(fn[0]),
-    'jsx/BridgeColorShorter.jsx no longer caps the stored palette at 12 entries');
+    'jsx/BridgeColorSorter.jsx no longer caps the stored palette at 12 entries');
 });
 
 test.describe('malformed input is dropped, never guessed at', () => {

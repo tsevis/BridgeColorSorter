@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ExtensionManifest Version="7.0"
-                   ExtensionBundleId="com.bridgecolorshorter.panel"
+                   ExtensionBundleId="com.bridgecolorsorter.panel"
                    ExtensionBundleVersion="0.1.1"
-                   ExtensionBundleName="BridgeColorShorter"
+                   ExtensionBundleName="BridgeColorSorter"
                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
   <ExtensionList>
-    <Extension Id="com.bridgecolorshorter.panel" Version="0.1.1" />
+    <Extension Id="com.bridgecolorsorter.panel" Version="0.1.1" />
   </ExtensionList>
 
   <ExecutionEnvironment>
@@ -23,7 +23,7 @@
   </ExecutionEnvironment>
 
   <DispatchInfoList>
-    <Extension Id="com.bridgecolorshorter.panel">
+    <Extension Id="com.bridgecolorsorter.panel">
       <DispatchInfo>
         <Resources>
           <MainPath>./index.html</MainPath>
@@ -32,14 +32,14 @@
             <Parameter>--mixed-context</Parameter>
             <Parameter>--allow-file-access-from-files</Parameter>
           </CEFCommandLine>
-          <ScriptPath>./jsx/BridgeColorShorter.jsx</ScriptPath>
+          <ScriptPath>./jsx/BridgeColorSorter.jsx</ScriptPath>
         </Resources>
         <Lifecycle>
           <AutoVisible>true</AutoVisible>
         </Lifecycle>
         <UI>
           <Type>Panel</Type>
-          <Menu>BridgeColorShorter</Menu>
+          <Menu>BridgeColorSorter</Menu>
           <Geometry>
             <Size>
               <Height>560</Height>

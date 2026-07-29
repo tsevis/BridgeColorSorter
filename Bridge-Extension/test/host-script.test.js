@@ -1,7 +1,7 @@
 /**
  * Static checks on the ExtendScript host layer.
  *
- * jsx/BridgeColorShorter.jsx runs in Bridge's own engine, so nothing here can call
+ * jsx/BridgeColorSorter.jsx runs in Bridge's own engine, so nothing here can call
  * it — but a syntax error, a missing entry point, or a language feature
  * ExtendScript does not have all fail the same way at runtime: evalScript
  * returns the bare string "EvalScript error." and every panel button stops
@@ -15,7 +15,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const HOST_PATH = path.join(__dirname, '..', 'jsx', 'BridgeColorShorter.jsx');
+const HOST_PATH = path.join(__dirname, '..', 'jsx', 'BridgeColorSorter.jsx');
 const HOST = fs.readFileSync(HOST_PATH, 'utf8');
 
 test('the host script parses', () => {
@@ -101,7 +101,7 @@ test('every entry point the panel calls exists', () => {
 
   for (const fn of called) {
     assert.ok(bodyOf(fn),
-      `js/app.js calls ${fn}() but jsx/BridgeColorShorter.jsx does not define it`);
+      `js/app.js calls ${fn}() but jsx/BridgeColorSorter.jsx does not define it`);
   }
 });
 

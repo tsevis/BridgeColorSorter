@@ -1,4 +1,4 @@
-# BridgeColorShorter
+# BridgeColorSorter
 
 **Sort a folder of images by color, inside Adobe Bridge.**
 
@@ -324,7 +324,7 @@ seconds. **No ordering change ships here without one.**
 
 ## User's guide
 
-![The BridgeColorShorter panel](documents/assets/BridgeColorShorter.png)
+![The BridgeColorSorter panel](documents/assets/BridgeColorSorter.png)
 
 *The panel before anything has been analyzed. Everything between the header and
 the status line scrolls, so the controls stay reachable however short you drag
@@ -344,7 +344,7 @@ took about five seconds rather than a minute.*
 ### Getting started
 
 1. In Bridge, open the folder you want to sort.
-2. **Window → Extensions → BridgeColorShorter.**
+2. **Window → Extensions → BridgeColorSorter.**
 3. Press **Analyze whole folder** (or select some images and press **Analyze
    selection**).
 4. Wait. A 1,559-image folder takes about 8 seconds the first time, and about 5
@@ -456,7 +456,7 @@ without altering a byte.
 
 ### From the signed package
 
-Install `BridgeColorShorter.zxp` with any ZXP installer (for example
+Install `BridgeColorSorter.zxp` with any ZXP installer (for example
 [ZXPInstaller](https://zxpinstaller.com)), then restart Bridge.
 
 It is signed with a self-signed certificate, so the installer will say the
@@ -470,7 +470,7 @@ with `PlayerDebugMode` off, which is the whole point of signing.
 cd Bridge-Extension && node scripts/install.js
 ```
 
-Restart Bridge, then **Window → Extensions → BridgeColorShorter**.
+Restart Bridge, then **Window → Extensions → BridgeColorSorter**.
 
 This route enables `PlayerDebugMode`, which CEP requires for unsigned
 extensions. Fine on your own machine; prefer the `.zxp` for anyone else.

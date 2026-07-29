@@ -1,5 +1,5 @@
 /**
- * BridgeColorShorter - panel controller.
+ * BridgeColorSorter - panel controller.
  *
  * Orchestrates: ask Bridge what is selected -> decode and cluster each image
  * here in the panel -> hand the results back to Bridge as XMP plus color
@@ -357,7 +357,7 @@
       }
       if (reply.notImages) {
         throw new Error('None of the ' + reply.notImages + ' selected item(s) ' +
-          'are image formats BridgeColorShorter can read.');
+          'are image formats BridgeColorSorter can read.');
       }
       throw new Error(which === 'folder'
         ? 'No images in this folder.'
