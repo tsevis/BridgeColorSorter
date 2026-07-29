@@ -456,7 +456,9 @@ without altering a byte.
 
 ### From the signed package
 
-Install `BridgeColorSorter.zxp` with any ZXP installer (for example
+Download `BridgeColorSorter.zxp` from the
+[latest release](https://github.com/tsevis/BridgeColorSorter/releases/latest),
+install it with any ZXP installer (for example
 [ZXPInstaller](https://zxpinstaller.com)), then restart Bridge.
 
 It is signed with a self-signed certificate, so the installer will say the
