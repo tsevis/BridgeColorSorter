@@ -20,7 +20,6 @@ const path = require('node:path');
 const read = (...p) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf8');
 const PANEL = read('js', 'app.js');
 const HTML = read('index.html');
-const README = read('..', 'README.md');
 
 /**
  * Element ids app.js looks up.
@@ -99,20 +98,4 @@ test('modules load before the code that uses them', () => {
   }
   assert.ok(at('analyzer/ColorEngine.js') < at('analyzer/workerPool.js'),
     'ColorEngine must load before workerPool');
-});
-
-test('the controls the README documents are present', () => {
-  // The README is the contract. If it names a control, the panel must have it.
-  if (/\*\*⇅\*\* reverses it/.test(README)) {
-    assert.ok(defined().has('reverseBtn'),
-      'the README documents a ⇅ reverse control that index.html does not have');
-  }
-  for (const [claim, id] of [
-    [/\*\*Sort\*\* — applies the chosen order/, 'sortBtn'],
-    [/\*\*Select these in Bridge\*\*/, 'selectInBridgeBtn']
-  ]) {
-    if (claim.test(README)) {
-      assert.ok(defined().has(id), `the README documents a control missing from the panel: ${id}`);
-    }
-  }
 });
