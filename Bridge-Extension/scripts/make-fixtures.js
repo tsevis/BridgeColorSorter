@@ -17,10 +17,11 @@
  */
 'use strict';
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const zlib = require('zlib');
 
-const OUT = process.argv[2] || '/Users/tsevis/Desktop/BridgeColorSorter-Scale';
+const OUT = process.argv[2] || path.join(os.homedir(), 'Desktop', 'BridgeColorSorter-Scale');
 const COUNT = Number(process.argv[3] || 400);
 const SIZE = 96;
 
